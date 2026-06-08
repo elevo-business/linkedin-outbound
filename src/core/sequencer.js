@@ -1,12 +1,25 @@
 // The brain. One `tick()` performs all safe bookkeeping (reply detection,
-// acceptance checks, expiries) plus AT MOST ONE outbound "send" action, to stay
-// human-like. A runner calls tick() repeatedly with jittered delays.
+// acceptance checks, stale-invite withdrawals, expiries) plus AT MOST ONE
+// outbound "send" action, to stay human-like. A runner calls tick() repeatedly
+// with jittered delays.
+//
+// Bookkeeping is THROTTLED: instead of re-checking every in-flight lead each
+// tick (which, on a real browser driver, would mean dozens of profile/inbox
+// navigations per tick — slow and very bot-like), each lead is re-checked at
+// most every `checks.intervalHours`, and only `checks.maxPerTick` leads/tick.
+//
+// A CIRCUIT BREAKER protects the account: if the driver reports a checkpoint /
+// auth wall (`client.isBlocked()`), all sending stops, a one-time alert fires,
+// and the breaker stays active (persisted via a `circuit_break` event) for
+// `safety.breakerCooldownHours` — so even cron `--once` runs stay dark.
 //
 // Everything time-related goes through `clock()` so tests control the clock.
 
 import { STATUS } from '../db/leads.js';
 
-const DAY = 24 * 3600 * 1000;
+const HOUR = 3600 * 1000;
+const DAY = 24 * HOUR;
+const MONTH = 30 * DAY;
 const daysSince = (iso, now) => (iso ? (now.getTime() - new Date(iso).getTime()) / DAY : Infinity);
 
 export class Sequencer {
@@ -24,7 +37,21 @@ export class Sequencer {
 
   async tick() {
     const now = this.clock();
-    const summary = { ts: now.toISOString(), skipped: null, replies: [], connected: [], expired: [], sent: null };
+    const summary = {
+      ts: now.toISOString(),
+      skipped: null,
+      replies: [],
+      connected: [],
+      withdrawn: [],
+      expired: [],
+      sent: null,
+    };
+
+    // 0) Circuit breaker — if a checkpoint/ban was seen recently, stay fully dark.
+    if (this._breakerActive(now)) {
+      summary.skipped = 'circuit-breaker active (LinkedIn checkpoint detected)';
+      return summary;
+    }
 
     // 1) Warmup gate — refuse all real actions until warmup has passed.
     if (now < new Date(this.cfg.warmupUntil)) {
@@ -38,9 +65,11 @@ export class Sequencer {
       return summary;
     }
 
-    // 3) Bookkeeping (reads only, no rate cost).
-    await this._detectReplies(now, summary);
-    await this._checkAcceptances(now, summary);
+    // 3) Bookkeeping (throttled reads + bounded stale-invite withdrawals).
+    await this._runChecks(now, summary);
+    if (await this._tripIfBlocked(now, summary)) return summary;
+    await this._withdrawStaleInvites(now, summary);
+    if (await this._tripIfBlocked(now, summary)) return summary;
     this._expireFollowups(now, summary);
 
     // 4) At most one outbound send this tick (priority: nurture > new outreach).
@@ -50,33 +79,82 @@ export class Sequencer {
       (await this._maybeFollowup(now, STATUS.FOLLOWUP_1, STATUS.FOLLOWUP_2, 'followup2_at', 3)) ||
       (await this._maybeInvite(now));
     summary.sent = sent;
+    if (await this._tripIfBlocked(now, summary)) return summary;
 
     return summary;
   }
 
+  // ---- circuit breaker ------------------------------------------------------
+
+  _breakerActive(now) {
+    const last = this.db.lastEventTime('circuit_break');
+    if (!last) return false;
+    return now.getTime() - new Date(last).getTime() < this.cfg.safety.breakerCooldownHours * HOUR;
+  }
+
+  // If the driver is now blocked, trip the breaker: record it (once per cooldown),
+  // alert, and mark the tick skipped. Returns true if blocked.
+  async _tripIfBlocked(now, summary) {
+    if (!this.client.isBlocked || !this.client.isBlocked()) return false;
+    if (!this._breakerActive(now)) {
+      this.db.logEvent(null, 'circuit_break', 'linkedin checkpoint/auth wall detected', now.toISOString());
+      await this.notifier.send(
+        '🛑 Circuit breaker tripped: LinkedIn showed a checkpoint / auth wall. ' +
+          'All sending is paused. Log in manually and investigate before resuming.'
+      );
+    }
+    summary.skipped = 'circuit-breaker tripped (LinkedIn checkpoint detected)';
+    return true;
+  }
+
   // ---- bookkeeping ----------------------------------------------------------
 
-  async _detectReplies(now, summary) {
-    const watch = [STATUS.MESSAGED, STATUS.FOLLOWUP_1, STATUS.FOLLOWUP_2];
-    for (const status of watch) {
-      for (const lead of this.leads.byStatus(status)) {
-        if (await this.client.hasReply(lead)) {
-          this.leads.setStatus(lead.id, STATUS.REPLIED, { stampColumn: 'replied_at' }, now.toISOString());
-          this.db.logEvent(lead.id, 'reply_detected', null, now.toISOString());
-          await this.notifier.send(`💬 Reply from ${lead.name || lead.linkedin_url} — take over the conversation.`);
-          summary.replies.push(lead.id);
+  // Throttled status re-checks across all in-flight leads. A single shared budget
+  // (oldest-checked first) covers both acceptance detection (invited) and reply
+  // detection (messaged/followups), so neither starves the other.
+  async _runChecks(now, summary) {
+    const nowIso = now.toISOString();
+    const cutoff = new Date(now.getTime() - this.cfg.checks.intervalHours * HOUR).toISOString();
+    const watch = [STATUS.INVITED, STATUS.MESSAGED, STATUS.FOLLOWUP_1, STATUS.FOLLOWUP_2];
+    const due = this.leads.dueForCheck(watch, cutoff, this.cfg.checks.maxPerTick);
+
+    for (const lead of due) {
+      if (lead.status === STATUS.INVITED) {
+        if (await this.client.isConnected(lead)) {
+          this.leads.setStatus(lead.id, STATUS.CONNECTED, { stampColumn: 'connected_at' }, nowIso);
+          this.db.logEvent(lead.id, 'invite_accepted', null, nowIso);
+          summary.connected.push(lead.id);
         }
+      } else if (await this.client.hasReply(lead)) {
+        this.leads.setStatus(lead.id, STATUS.REPLIED, { stampColumn: 'replied_at' }, nowIso);
+        this.db.logEvent(lead.id, 'reply_detected', null, nowIso);
+        await this.notifier.send(`💬 Reply from ${lead.name || lead.linkedin_url} — take over the conversation.`);
+        summary.replies.push(lead.id);
       }
+      this.leads.markChecked(lead.id, nowIso);
+      if (this.client.isBlocked && this.client.isBlocked()) break;
     }
   }
 
-  async _checkAcceptances(now, summary) {
-    for (const lead of this.leads.byStatus(STATUS.INVITED)) {
-      if (await this.client.isConnected(lead)) {
-        this.leads.setStatus(lead.id, STATUS.CONNECTED, { stampColumn: 'connected_at' }, now.toISOString());
-        this.db.logEvent(lead.id, 'invite_accepted', null, now.toISOString());
-        summary.connected.push(lead.id);
+  // Withdraw connection requests that have been pending too long. Bounded per tick
+  // so it never turns into a burst of activity.
+  async _withdrawStaleInvites(now, summary) {
+    const nowIso = now.toISOString();
+    const stale = this.leads
+      .byStatus(STATUS.INVITED)
+      .filter((l) => daysSince(l.invited_at, now) >= this.cfg.invites.withdrawAfterDays)
+      .slice(0, this.cfg.invites.maxWithdrawalsPerTick);
+
+    for (const lead of stale) {
+      const res = await this.client.withdrawInvite(lead);
+      if (res.ok) {
+        this.leads.setStatus(lead.id, STATUS.WITHDRAWN, { stampColumn: 'withdrawn_at' }, nowIso);
+        this.db.logEvent(lead.id, 'invite_withdrawn', null, nowIso);
+        summary.withdrawn.push(lead.id);
+      } else {
+        this.db.logEvent(lead.id, 'withdraw_failed', res.error, nowIso);
       }
+      if (this.client.isBlocked && this.client.isBlocked()) break;
     }
   }
 
@@ -100,6 +178,7 @@ export class Sequencer {
       const res = await this.client.sendMessage(lead, text);
       if (!res.ok) {
         this.db.logEvent(lead.id, 'message_failed', res.error, now.toISOString());
+        if (this.client.isBlocked && this.client.isBlocked()) break;
         continue;
       }
       this.leads.setStatus(lead.id, STATUS.MESSAGED, { stampColumn: 'messaged_at' }, now.toISOString());
@@ -122,6 +201,7 @@ export class Sequencer {
       const res = await this.client.sendMessage(lead, text);
       if (!res.ok) {
         this.db.logEvent(lead.id, 'message_failed', res.error, now.toISOString());
+        if (this.client.isBlocked && this.client.isBlocked()) break;
         continue;
       }
       this.leads.setStatus(lead.id, toStatus, { stampColumn }, now.toISOString());
@@ -136,7 +216,16 @@ export class Sequencer {
     if (!gate.ok) return null;
     const next = this.leads.byStatus(STATUS.NEW, 1)[0];
     if (!next) return null;
-    const note = await this.personalizer.note(next);
+
+    // Decide whether to attach a note: LinkedIn caps NOTED invites per month.
+    // Once that budget is spent, keep inviting without a note rather than failing.
+    let useNote = this.cfg.invites.attachNote;
+    if (useNote && this.cfg.invites.maxNotedPerMonth > 0) {
+      const noted = this.db.countEventsSince('invite_sent', MONTH, now, 'noted');
+      if (noted >= this.cfg.invites.maxNotedPerMonth) useNote = false;
+    }
+
+    const note = useNote ? await this.personalizer.note(next) : null;
     const res = await this.client.sendConnectionRequest(next, note);
     if (!res.ok) {
       this.leads.setStatus(next.id, STATUS.FAILED, { error: res.error }, now.toISOString());
@@ -144,7 +233,7 @@ export class Sequencer {
       return { action: 'invite_failed', leadId: next.id, error: res.error };
     }
     this.leads.setStatus(next.id, STATUS.INVITED, { stampColumn: 'invited_at' }, now.toISOString());
-    this.db.logEvent(next.id, 'invite_sent', null, now.toISOString());
-    return { action: 'invite', leadId: next.id, note };
+    this.db.logEvent(next.id, 'invite_sent', useNote ? 'noted' : 'plain', now.toISOString());
+    return { action: 'invite', leadId: next.id, note, noted: useNote };
   }
 }

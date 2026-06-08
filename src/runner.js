@@ -31,6 +31,7 @@ function describe(summary) {
   const parts = [];
   if (summary.replies.length) parts.push(`replies=${summary.replies.length}`);
   if (summary.connected.length) parts.push(`accepted=${summary.connected.length}`);
+  if (summary.withdrawn?.length) parts.push(`withdrawn=${summary.withdrawn.length}`);
   if (summary.expired.length) parts.push(`done=${summary.expired.length}`);
   if (summary.sent) parts.push(`sent=${summary.sent.action}#${summary.sent.leadId}`);
   return parts.length ? parts.join(' ') : 'nothing to do';
@@ -67,7 +68,11 @@ async function main() {
   while (!stop) {
     const summary = await sequencer.tick();
     console.log(`[${new Date().toLocaleTimeString()}] ${describe(summary)}`);
-    if (summary.skipped === 'off-hours' || summary.skipped?.startsWith('warmup')) {
+    if (
+      summary.skipped === 'off-hours' ||
+      summary.skipped?.startsWith('warmup') ||
+      summary.skipped?.startsWith('circuit-breaker')
+    ) {
       await sleep(rand(10, 20) * 60 * 1000); // idle: re-check every ~15 min
     } else {
       await sleep(rand(config.delays.minSeconds, config.delays.maxSeconds) * 1000);

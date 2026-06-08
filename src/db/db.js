@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS leads (
   followup2_at  TEXT,
   replied_at    TEXT,
   done_at       TEXT,
+  withdrawn_at  TEXT,
+  last_checked_at TEXT,
   error         TEXT
 );
 
@@ -56,6 +58,18 @@ export class Db {
     }
     this.sqlite = new DatabaseSync(dbPath);
     this.sqlite.exec(SCHEMA);
+    this._migrate();
+  }
+
+  // Idempotently add columns that newer versions introduced, so existing
+  // databases keep working without a manual migration.
+  _migrate() {
+    const cols = this.all(`PRAGMA table_info(leads)`).map((c) => c.name);
+    const add = (name, type) => {
+      if (!cols.includes(name)) this.sqlite.exec(`ALTER TABLE leads ADD COLUMN ${name} ${type}`);
+    };
+    add('withdrawn_at', 'TEXT');
+    add('last_checked_at', 'TEXT');
   }
 
   close() {
@@ -83,12 +97,21 @@ export class Db {
   }
 
   // Counts events of a given type within the last `ms` milliseconds from `now`.
-  countEventsSince(type, ms, now = new Date()) {
+  // Optionally narrow to a specific `detail` value (e.g. noted vs plain invites).
+  countEventsSince(type, ms, now = new Date(), detail = null) {
     const cutoff = new Date(now.getTime() - ms).toISOString();
+    if (detail === null) {
+      const row = this.get(
+        `SELECT COUNT(*) AS n FROM events
+         WHERE type = $type AND created_at >= $cutoff`,
+        { type, cutoff }
+      );
+      return row.n;
+    }
     const row = this.get(
       `SELECT COUNT(*) AS n FROM events
-       WHERE type = $type AND created_at >= $cutoff`,
-      { type, cutoff }
+       WHERE type = $type AND detail = $detail AND created_at >= $cutoff`,
+      { type, detail, cutoff }
     );
     return row.n;
   }
@@ -96,6 +119,14 @@ export class Db {
   firstEventTime(type) {
     const row = this.get(
       `SELECT MIN(created_at) AS t FROM events WHERE type = $type`,
+      { type }
+    );
+    return row?.t ?? null;
+  }
+
+  lastEventTime(type) {
+    const row = this.get(
+      `SELECT MAX(created_at) AS t FROM events WHERE type = $type`,
       { type }
     );
     return row?.t ?? null;

@@ -15,6 +15,24 @@ const pexecFile = promisify(execFile);
 const firstName = (name) => (name ? name.trim().split(/\s+/)[0] : 'there');
 const clamp = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
 
+// Strip artifacts an LLM sometimes adds despite "output only the message":
+// code fences, a leading "Sure, here's…:" preamble line, and wrapping quotes.
+// Keeps the raw text otherwise.
+export function sanitize(text) {
+  if (!text) return text;
+  let s = text.trim();
+  s = s.replace(/^```[a-z]*\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+  s = s.replace(/^(sure[,!]?|here(?:['’]s| is)|certainly[,!]?|of course[,!]?)[^\n]*:\s*\n+/i, '').trim();
+  if (
+    (s.startsWith('"') && s.endsWith('"')) ||
+    (s.startsWith('“') && s.endsWith('”')) ||
+    (s.startsWith("'") && s.endsWith("'"))
+  ) {
+    s = s.slice(1, -1).trim();
+  }
+  return s;
+}
+
 // ---- Deterministic templates -------------------------------------------------
 
 export function templateNote(lead, cfg) {
@@ -90,7 +108,7 @@ export class Personalizer {
   async note(lead) {
     if (this.cfg.personalizer.mode !== 'claude-cli') return templateNote(lead, this.cfg);
     try {
-      const out = await claudeGenerate(buildPrompt('note', lead, this.cfg), this.cfg);
+      const out = sanitize(await claudeGenerate(buildPrompt('note', lead, this.cfg), this.cfg));
       return clamp(out || templateNote(lead, this.cfg), 300);
     } catch (err) {
       this.log(`[personalizer] claude note failed, using template: ${err.message}`);
@@ -101,7 +119,7 @@ export class Personalizer {
   async message(lead, step = 1) {
     if (this.cfg.personalizer.mode !== 'claude-cli') return templateMessage(lead, this.cfg, step);
     try {
-      const out = await claudeGenerate(buildPrompt('message', lead, this.cfg, step), this.cfg);
+      const out = sanitize(await claudeGenerate(buildPrompt('message', lead, this.cfg, step), this.cfg));
       return clamp(out || templateMessage(lead, this.cfg, step), 1200);
     } catch (err) {
       this.log(`[personalizer] claude message failed, using template: ${err.message}`);

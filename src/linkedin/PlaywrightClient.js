@@ -26,6 +26,17 @@ export class PlaywrightClient extends LinkedInClient {
     this.browser = null;
     this.context = null;
     this.page = null;
+    this.blocked = false; // tripped when LinkedIn shows a checkpoint / auth wall
+  }
+
+  isBlocked() {
+    return this.blocked;
+  }
+
+  // True if the current page is a login / checkpoint / auth-wall URL — i.e. our
+  // session got challenged. Any nav that lands here means we must stop sending.
+  _onCheckpoint() {
+    return /\/(login|checkpoint|authwall|uas\/login)/.test(this.page?.url() || '');
   }
 
   async _launch() {
@@ -64,10 +75,11 @@ export class PlaywrightClient extends LinkedInClient {
     });
     await humanPause();
     // If we got redirected to a login/checkpoint page, the session is invalid.
-    if (/\/(login|checkpoint|authwall)/.test(this.page.url())) {
+    if (this._onCheckpoint()) {
+      this.blocked = true;
       return {
         ok: false,
-        error: 'Not logged in. Run `node scripts/login.js` to create a session.',
+        error: 'Not logged in / checkpoint. Run `node scripts/login.js` to create a session.',
       };
     }
     return { ok: true };
@@ -79,6 +91,12 @@ export class PlaywrightClient extends LinkedInClient {
       timeout: 30000,
     });
     await humanPause();
+    // A profile nav that lands on a checkpoint means the session is challenged;
+    // trip the breaker and bail out hard so the sequencer stops sending.
+    if (this._onCheckpoint()) {
+      this.blocked = true;
+      throw new Error('CHECKPOINT: LinkedIn challenged the session');
+    }
   }
 
   async _typeHuman(locator, text) {
@@ -193,10 +211,33 @@ export class PlaywrightClient extends LinkedInClient {
       if (count === 0) return false;
       const last = events.nth(count - 1);
       const senderName = (await last.locator('.msg-s-message-group__name').first().textContent().catch(() => '')) || '';
-      return !/you/i.test(senderName.trim());
+      const name = senderName.trim();
+      // Empty name is ambiguous (own messages often omit the name block); don't
+      // treat that as a reply — better to miss one than to wrongly stop sequencing.
+      if (!name) return false;
+      return !/^you$/i.test(name);
     } catch (err) {
       this.log(`[playwright] hasReply error: ${err.message}`);
       return false;
+    }
+  }
+
+  async withdrawInvite(lead) {
+    try {
+      await this._gotoProfile(lead);
+      const pending = this.page.getByRole('button', { name: /Pending/i }).first();
+      // No pending button => already accepted or already withdrawn; treat as done.
+      if (!(await pending.count())) return { ok: true };
+      await pending.click();
+      await humanPause();
+      // LinkedIn shows a confirm dialog with a "Withdraw" button.
+      const withdraw = this.page.getByRole('button', { name: /Withdraw/i }).first();
+      if (!(await withdraw.count())) return { ok: false, error: 'Withdraw button not found' };
+      await withdraw.click();
+      await humanPause();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: String(err?.message || err) };
     }
   }
 

@@ -76,6 +76,30 @@ export function loadConfig(overrides = {}) {
       daysBeforeDone: num(process.env.DAYS_BEFORE_DONE, 5),
     },
 
+    // Throttle expensive per-lead checks (reply/acceptance detection): re-check a
+    // given lead at most every `intervalHours`, and at most `maxPerTick` leads/tick.
+    checks: {
+      intervalHours: num(process.env.CHECK_INTERVAL_HOURS, 6),
+      maxPerTick: num(process.env.MAX_CHECKS_PER_TICK, 5),
+    },
+
+    invites: {
+      // Attach a personalized note to connection requests. LinkedIn caps NOTED
+      // invites hard (free accounts ~5/month); once the monthly budget is spent
+      // we keep inviting WITHOUT a note rather than failing.
+      attachNote: bool(process.env.ATTACH_NOTE, true),
+      maxNotedPerMonth: num(process.env.MAX_NOTED_INVITES_PER_MONTH, 5), // 0 = unlimited
+      // Pull back invites that have been pending this long (too many open invites
+      // is itself a ban signal). Bounded per tick so it stays human-like.
+      withdrawAfterDays: num(process.env.WITHDRAW_INVITE_AFTER_DAYS, 21),
+      maxWithdrawalsPerTick: num(process.env.MAX_WITHDRAWALS_PER_TICK, 2),
+    },
+
+    safety: {
+      // After a checkpoint/auth-wall is detected, stay fully dark for this long.
+      breakerCooldownHours: num(process.env.SAFETY_BREAKER_COOLDOWN_HOURS, 12),
+    },
+
     personalizer: {
       mode: str(process.env.PERSONALIZER, 'template'),
       claudeBin: str(process.env.CLAUDE_BIN, 'claude'),

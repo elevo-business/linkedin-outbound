@@ -46,8 +46,24 @@ SQLite pipeline:  new → invited → connected → messaged → followup_1 → 
 ```
 
 Each **tick** does all safe bookkeeping (detect replies, detect accepted invites,
-expire old sequences) plus **at most one outbound send**, to stay human-like. The
-runner loops with randomized delays inside your configured work hours.
+withdraw stale invites, expire old sequences) plus **at most one outbound send**,
+to stay human-like. The runner loops with randomized delays inside your configured
+work hours.
+
+### Ban-safety built in
+
+- **Throttled checks.** Reply/acceptance detection is the expensive part on a real
+  browser (one navigation per lead). The machine re-checks any given lead at most
+  every `CHECK_INTERVAL_HOURS` and only `MAX_CHECKS_PER_TICK` leads per tick — so a
+  tick never turns into dozens of page loads.
+- **Note-budget aware.** LinkedIn caps *noted* invites hard (free accounts ~5/month).
+  Once `MAX_NOTED_INVITES_PER_MONTH` is spent, invites keep going out **without a
+  note** instead of silently failing.
+- **Stale-invite withdrawal.** Invites pending longer than `WITHDRAW_INVITE_AFTER_DAYS`
+  are withdrawn (a large pile of open invites is itself a ban signal), bounded per tick.
+- **Circuit breaker.** If the driver hits a checkpoint / auth wall, all sending stops,
+  you get an alert, and the machine stays dark for `SAFETY_BREAKER_COOLDOWN_HOURS`
+  (persisted, so even cron `--once` runs respect it). Log in manually to clear it.
 
 ## Cost: ~10 €/month
 
@@ -112,6 +128,9 @@ All settings live in `.env` (see `.env.example` for the full list). Key ones:
 - **`WORK_HOURS_*`, `WORK_DAYS`** — only acts inside this window.
 - **`MIN/MAX_DELAY_SECONDS`** — random pause between actions.
 - **Sequence timing** — `DAYS_BEFORE_FIRST_DM`, `DAYS_BEFORE_FOLLOWUP_1/2`, `DAYS_BEFORE_DONE`.
+- **Check throttling** — `CHECK_INTERVAL_HOURS`, `MAX_CHECKS_PER_TICK`.
+- **Invites** — `ATTACH_NOTE`, `MAX_NOTED_INVITES_PER_MONTH`, `WITHDRAW_INVITE_AFTER_DAYS`, `MAX_WITHDRAWALS_PER_TICK`.
+- **`SAFETY_BREAKER_COOLDOWN_HOURS`** — how long to stay dark after a detected checkpoint.
 - **`PERSONALIZER`** — `template` (offline) or `claude-cli` (your Max plan).
 - **`SENDER_NAME`, `SENDER_ROLE`, `VALUE_PROP`** — context fed to the personalizer.
 

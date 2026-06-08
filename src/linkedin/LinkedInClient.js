@@ -30,5 +30,19 @@ export class LinkedInClient {
     throw new Error('not implemented');
   }
 
+  /** Withdraw a still-pending connection request. Returns { ok, error? } */
+  async withdrawInvite(_lead) {
+    throw new Error('not implemented');
+  }
+
+  /**
+   * True once the driver has seen a hard block (checkpoint / auth wall / account
+   * restriction). The sequencer uses this to trip a circuit breaker and stop
+   * sending. Synchronous so it can be polled cheaply between actions.
+   */
+  isBlocked() {
+    return false;
+  }
+
   async close() {}
 }

@@ -10,6 +10,8 @@ export class MockClient extends LinkedInClient {
    * @param {(lead)=>boolean} [opts.acceptInvite]  whether an invited lead is "connected"
    * @param {(lead)=>boolean} [opts.reply]         whether a messaged lead has replied
    * @param {boolean} [opts.failConnect]           force connection requests to fail
+   * @param {boolean} [opts.failWithdraw]          force invite withdrawals to fail
+   * @param {boolean} [opts.blocked]               simulate a checkpoint/ban (isBlocked)
    * @param {(msg:string)=>void} [opts.logger]
    */
   constructor(opts = {}) {
@@ -17,6 +19,8 @@ export class MockClient extends LinkedInClient {
     this.acceptInvite = opts.acceptInvite ?? (() => false);
     this.reply = opts.reply ?? (() => false);
     this.failConnect = opts.failConnect ?? false;
+    this.failWithdraw = opts.failWithdraw ?? false;
+    this.blocked = opts.blocked ?? false;
     this.logger = opts.logger ?? (() => {});
     this.actions = []; // recorded calls, useful for assertions
   }
@@ -45,5 +49,16 @@ export class MockClient extends LinkedInClient {
 
   async hasReply(lead) {
     return Boolean(this.reply(lead));
+  }
+
+  async withdrawInvite(lead) {
+    this.actions.push({ type: 'withdraw', url: lead.linkedin_url });
+    this.logger(`[mock] withdraw -> ${lead.name || lead.linkedin_url}`);
+    if (this.failWithdraw) return { ok: false, error: 'mock: failWithdraw' };
+    return { ok: true };
+  }
+
+  isBlocked() {
+    return Boolean(this.blocked);
   }
 }

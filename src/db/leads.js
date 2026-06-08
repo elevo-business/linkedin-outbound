@@ -2,6 +2,7 @@
 // Status flow:
 //   new -> invited -> connected -> messaged -> followup_1 -> followup_2 -> done
 //   (any messaged/followup state) -> replied   (terminal-for-machine)
+//   invited -> withdrawn                        (stale pending invite pulled back)
 //   any -> failed                              (on hard errors)
 
 export const STATUS = {
@@ -13,6 +14,7 @@ export const STATUS = {
   FOLLOWUP_2: 'followup_2',
   REPLIED: 'replied',
   DONE: 'done',
+  WITHDRAWN: 'withdrawn',
   FAILED: 'failed',
 };
 
@@ -78,6 +80,29 @@ export class Leads {
 
   byId(id) {
     return this.db.get(`SELECT * FROM leads WHERE id = $id`, { id });
+  }
+
+  // Leads in any of `statuses` that are due for a status re-check: never checked,
+  // or last checked before `cutoffIso`. Oldest-checked first (NULLs sort first in
+  // SQLite), capped at `limit`. Used to throttle expensive per-lead navigations.
+  dueForCheck(statuses, cutoffIso, limit) {
+    const placeholders = statuses.map((_, i) => `$s${i}`).join(', ');
+    const params = { cutoff: cutoffIso, limit };
+    statuses.forEach((s, i) => { params[`s${i}`] = s; });
+    return this.db.all(
+      `SELECT * FROM leads
+         WHERE status IN (${placeholders})
+           AND (last_checked_at IS NULL OR last_checked_at < $cutoff)
+         ORDER BY last_checked_at ASC
+         LIMIT $limit`,
+      params
+    );
+  }
+
+  // Records that a lead was just checked (does NOT bump updated_at — a check is
+  // not a content change).
+  markChecked(id, now = new Date().toISOString()) {
+    this.db.run(`UPDATE leads SET last_checked_at = $now WHERE id = $id`, { id, now });
   }
 
   counts() {
