@@ -27,28 +27,41 @@ selectors/API shapes must be validated live on the server.
 - [x] Tests (template mode, no network).
 
 ## Phase 2 — Inbound capture brain
-- [ ] Extend the LinkedIn driver interface: `publishPost`, `getPostComments`,
+- [x] Extend the LinkedIn driver interface: `publishPost`, `getPostComments`,
       `getPendingInvites`, `acceptInvite`. Full MockClient impl; Playwright/Unipile
       defensive impl.
-- [ ] InboundSequencer: publish due posts → scan comments for the trigger →
+- [x] InboundSequencer: publish due posts → scan comments for the trigger →
       create engagements → auto-accept pending invites → DM the magnet → detect
-      email/reply. Throttled, rate-limited, circuit-breaker aware.
-- [ ] Inbound runner / mode.
-- [ ] Tests.
+      reply. Throttled, rate-limited, circuit-breaker aware.
+- [x] Inbound runner (`src/inboundRunner.js`).
+- [x] Tests.
 
 ## Phase 3 — Capture, delivery, hand-off, learning
-- [ ] Minimal gated capture web server (built-in http): `/m/:slug` landing page,
-      email form, click + capture tracking (delivery + tracking must be solid).
-- [ ] Automatic document delivery: the magnet link is sent right in the LinkedIn
-      chat (DM) on engagement; clicks/captures are tracked back to the engagement.
-- [ ] **Pipedrive CRM hand-off** (primary): a swappable CRM layer; a captured /
-      taken-over lead is created in Pipedrive via API token (person + lead/deal),
-      configurable trigger. (Instantly stays the user's own separate email setup.)
-- [ ] Learning loop: track per-variant outcomes (post hook, CTA, DM), pick winners
-      with a simple multi-armed bandit, feed winners back into the prompts.
-- [ ] `status.js` inbound section + analytics.
-- [ ] Tests.
+- [x] Minimal gated capture web server (built-in http): `/m/:slug` landing page,
+      email form, click + capture tracking.
+- [x] Automatic document delivery: the magnet link is sent right in the LinkedIn
+      chat (DM); clicks/captures are tracked back to the engagement.
+- [x] **Pipedrive CRM hand-off**: swappable CRM layer; a captured / taken-over
+      lead is created in Pipedrive via API token (person + lead + note), trigger
+      via `CRM_CREATE_ON`.
+- [x] Learning loop: per-hook outcome stats + epsilon-greedy bandit (`pickHook`),
+      `gen-posts --learn`.
+- [x] `status.js` inbound section + analytics.
+- [x] Tests.
 
 ## Phase 4 — Docs & polish
-- [ ] README inbound section; wire scripts into package.json.
-- [ ] End-to-end mock dry-run documented.
+- [x] README inbound section; scripts wired into package.json.
+- [x] End-to-end mock dry-run verified.
+
+## Still manual / live-only (by design — you do these)
+- Pick the driver and fill keys (Playwright login+proxy, or Unipile DSN/key/account).
+- Validate live: post publishing, comment reading, invite accepting, and the
+  Unipile/Pipedrive API field shapes (defensive but unverified, like the Playwright
+  selectors).
+- Put the capture server behind a public URL and set `CAPTURE_BASE_URL`.
+
+## Possible next steps (not built)
+- Auto-scheduling: have the inbound loop generate + schedule new posts on a cadence.
+- Feed winning hooks/copy back into the generation prompts (closing the learn loop
+  fully, beyond hook selection).
+- DM-based magnet requests (capture people who DM, not just commenters).

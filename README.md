@@ -1,13 +1,53 @@
-# LinkedIn Outbound Machine
+# LinkedIn Lead Machine
 
-A personal LinkedIn outbound tool: send connection requests → personalized DM →
-timed follow-ups, with **conservative, ban-avoiding rate limits** and a
-**swappable access layer**. Built for one operator on one account, for their own
-outreach.
+A personal LinkedIn lead engine for one operator on one account. Two motors that
+share the same safety rails (warmup gate, rate limits, work hours, circuit breaker):
 
-> Companion to an existing email outbound setup (e.g. Instantly). LinkedIn is the
-> low-volume / high-trust channel; email is the volume channel. The long game is
-> running both against the same lead.
+- **Inbound (primary, LeadPanther-style):** generate a lead magnet + posts →
+  publish → capture everyone who comments the trigger word → DM the magnet → gate
+  the email → hand the lead to your CRM. A small bandit learns which post hooks
+  convert. **This is the focus.**
+- **Outbound (secondary):** connection request → personalized DM → timed
+  follow-ups, with an optional email fallback.
+
+> AI for all generation is **Claude via your Max-plan CLI** (Opus for magnets/posts,
+> Sonnet for DMs). The "continuously learning" part is an honest outcome-tracking
+> bandit — no separate ML engine. See `ROADMAP.md` for the pivot plan.
+
+---
+
+## Inbound engine (the primary motor)
+
+```
+ContentGenerator (Claude)                Capture server (gated page)
+   magnet + posts  ──►  publish post ──►  comment "guide"  ──►  DM the magnet link
+                                                │                      │
+                                          engagement captured     click + email tracked
+                                                │                      │
+                                     auto-accept their invite     email → CRM (Pipedrive)
+```
+
+```bash
+# 1) generate a magnet and some posts (Claude if PERSONALIZER=claude-cli)
+npm run gen-magnet -- "cold email deliverability"
+npm run gen-posts -- 1 4 --schedule         # 4 posts for magnet #1, spread over days
+npm run gen-posts -- 1 4 --schedule --learn # ...or let the bandit pick the hooks
+
+# 2) run the capture server (put it behind a public URL; set CAPTURE_BASE_URL)
+npm run capture-server
+
+# 3) run the inbound loop (publish, scan comments, deliver, capture)
+npm run inbound-tick          # one tick (good for cron)
+npm run inbound-loop          # continuous, human-like pacing
+```
+
+Reading comments / pending invites is far more reliable via the **Unipile** driver
+(real API) than browser scraping — recommended for the inbound flow.
+
+Captured / taken-over leads are pushed to **Pipedrive** automatically
+(`CRM_PROVIDER=pipedrive`, `PIPEDRIVE_API_TOKEN`); on email capture and/or on reply
+(`CRM_CREATE_ON`). `npm run status` shows posts, engagements, click/capture/CRM
+totals, and per-hook performance.
 
 ---
 
@@ -155,7 +195,13 @@ src/
                          PlaywrightClient, UnipileClient, index.js (factory)
   email/                 fallback channel: EmailClient (interface), MockEmailClient,
                          InstantlyClient, index.js (factory)
-  ai/personalizer.js     Claude-CLI + local templates
+  crm/                   CRM hand-off: CrmClient (interface), PipedriveClient,
+                         MockCrmClient, index.js (factory + syncEngagementToCrm)
+  inbound/               contentGenerator, inboundSequencer, learning (bandit)
+  server/captureServer   gated landing pages + email capture + click tracking
+  db/{magnets,posts,engagements}.js   inbound repositories
+  ai/{claude,personalizer}.js   Claude CLI plumbing + DM templates
+  inboundRunner.js       inbound entry point (--once or loop)
   core/{rateLimiter,sequencer}.js   limits + the brain
   notify/notifier.js     console / Telegram
   runner.js              entry point (--once or loop)
