@@ -16,6 +16,7 @@
     "tick": "node src/runner.js --once",
     "run-loop": "node src/runner.js",
     "status": "node scripts/status.js",
+    "preflight": "node scripts/preflight.js",
     "gen-magnet": "node scripts/gen-magnet.js",
     "gen-posts": "node scripts/gen-posts.js",
     "inbound-tick": "node src/inboundRunner.js --once",

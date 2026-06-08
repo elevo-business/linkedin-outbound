@@ -15,6 +15,7 @@ const DAY = 24 * 3600 * 1000;
 async function main() {
   const args = process.argv.slice(2);
   const schedule = args.includes('--schedule');
+  const publishNow = args.includes('--now'); // schedule at current time -> due immediately
   const learn = args.includes('--learn'); // pick hooks by past performance (bandit)
   const positional = args.filter((a) => !a.startsWith('--'));
   const magnetId = Number(positional[0]);
@@ -39,10 +40,15 @@ async function main() {
   for (let i = 0; i < count; i++) {
     const hook = learn ? pickHook(db, POST_HOOKS) : POST_HOOKS[i % POST_HOOKS.length];
     const post = await gen.post(magnet, hook);
-    const scheduledAt = schedule ? new Date(Date.now() + (i + 1) * DAY).toISOString() : null;
+    const willSchedule = schedule || publishNow;
+    const scheduledAt = publishNow
+      ? new Date().toISOString()
+      : schedule
+        ? new Date(Date.now() + (i + 1) * DAY).toISOString()
+        : null;
     const id = posts.create({
       magnet_id: magnetId,
-      status: schedule ? POST_STATUS.SCHEDULED : POST_STATUS.DRAFT,
+      status: willSchedule ? POST_STATUS.SCHEDULED : POST_STATUS.DRAFT,
       body: post.body,
       hook: post.hook,
       trigger_word: post.trigger_word,
