@@ -30,8 +30,10 @@ Paste the env block (KEY=VALUE lines) into Coolify's **Environment Variables**
 | `ADMIN_PORT=3001`, `CAPTURE_PORT=3000` | |
 | `CAPTURE_BASE_URL` | the PUBLIC URL Coolify assigns to the `capture` service (set after step 3) |
 | `WARMUP_UNTIL` | a PAST date only if the 30-day account warmup is done; otherwise leave the future default to keep sending blocked |
-| `PERSONALIZER` | `template` (works headless) or `claude-cli` (needs the Claude CLI authenticated in the container) |
-| `CONTENT_MODEL=claude-opus-4-8` | used only with `claude-cli` |
+| `CONTENT_ENGINE=claude-cli` | content via the Max plan headless (the `claude` CLI is in the image). Or `claude-api` (pay-per-token) / `template` (placeholder — do NOT use for real posts) |
+| `CLAUDE_CODE_OAUTH_TOKEN` | **required for `claude-cli` in the container.** Run `claude setup-token` locally once (Max/Pro plan) → paste the 1-year token. No API key, no per-token cost |
+| `CONTENT_MODEL=claude-opus-4-8`, `CONTENT_LANGUAGE=German` | model + content language (campaigns override language) |
+| `IMAGE_PROVIDER=gemini`, `GEMINI_API_KEY` | per-post images (Claude writes the brief, Imagen renders). `none` to disable |
 | `INBOUND_ICP`, `INBOUND_TOPICS`, `INBOUND_TRIGGER_WORD` | fallback defaults; real ICPs are created as campaigns in the dashboard |
 | `NOTIFY_DRIVER`, `TELEGRAM_*` | optional reply pings |
 
@@ -61,9 +63,12 @@ runs in WAL mode so the three services share the file safely.
 - **Unipile/Pipedrive API field shapes** are wired defensively but unverified
   live — run `node scripts/probe-unipile.js <handle>` once in the `inbound`
   container (or any host where the DSN port is reachable) and confirm.
-- **Claude Max CLI in a container** needs the `claude` binary authenticated
-  (headless). If that's not set up, use `PERSONALIZER=template` (generic copy) or
-  switch content generation to the Anthropic API.
+- **Claude Max content in the container**: the `claude` CLI is baked into the
+  image; set `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`, run once
+  locally on a Max/Pro plan) so `CONTENT_ENGINE=claude-cli` works headless — no
+  API key, no per-token cost. (Note: from 2026-06-15, headless `claude -p` draws
+  from a separate monthly Agent-SDK quota.) Alternatively `CONTENT_ENGINE=claude-api`
+  + `ANTHROPIC_API_KEY` (pay-per-token). Never ship real posts on `template`.
 - **Rotate** the Unipile + Pipedrive credentials after go-live if they were shared
   in plaintext anywhere.
 - Start on a secondary LinkedIn account for the first 1–2 weeks.
