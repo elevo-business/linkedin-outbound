@@ -100,6 +100,31 @@ export function loadConfig(overrides = {}) {
       breakerCooldownHours: num(process.env.SAFETY_BREAKER_COOLDOWN_HOURS, 12),
     },
 
+    // Inbound (content-driven) engine: post -> comment -> magnet delivery -> capture.
+    inbound: {
+      icp: str(process.env.INBOUND_ICP, ''), // who the content targets
+      topics: list(process.env.INBOUND_TOPICS, []), // content themes
+      triggerWord: str(process.env.INBOUND_TRIGGER_WORD, 'guide'), // comment keyword
+      deliveryMode: str(process.env.MAGNET_DELIVERY, 'dm'), // dm | gated
+      captureBaseUrl: str(process.env.CAPTURE_BASE_URL, 'http://localhost:3000'),
+      autoAccept: bool(process.env.INBOUND_AUTO_ACCEPT, true),
+      scanIntervalHours: num(process.env.INBOUND_SCAN_INTERVAL_HOURS, 4),
+      // Per-tick budgets (kept low to stay human-like, like the outbound machine).
+      maxPostsPerTick: num(process.env.MAX_POSTS_PER_TICK, 1),
+      maxScansPerTick: num(process.env.MAX_SCANS_PER_TICK, 3),
+      maxDmsPerTick: num(process.env.MAX_INBOUND_DMS_PER_TICK, 1),
+    },
+
+    // Content generation models (Claude via the same Max-plan CLI). Quality-critical
+    // assets default to a stronger model; everything still falls back to templates.
+    content: {
+      model: str(process.env.CONTENT_MODEL, 'claude-opus-4-8'),
+    },
+
+    server: {
+      capturePort: num(process.env.CAPTURE_PORT, 3000),
+    },
+
     personalizer: {
       mode: str(process.env.PERSONALIZER, 'template'),
       claudeBin: str(process.env.CLAUDE_BIN, 'claude'),

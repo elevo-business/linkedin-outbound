@@ -7,31 +7,13 @@
 //                 asking for a short, human, non-spammy message. Falls back to
 //                 template on any error.
 
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { runClaude, sanitize } from './claude.js';
 
-const pexecFile = promisify(execFile);
+// Re-exported for backwards-compatible imports.
+export { sanitize };
 
 const firstName = (name) => (name ? name.trim().split(/\s+/)[0] : 'there');
 const clamp = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
-
-// Strip artifacts an LLM sometimes adds despite "output only the message":
-// code fences, a leading "Sure, here's…:" preamble line, and wrapping quotes.
-// Keeps the raw text otherwise.
-export function sanitize(text) {
-  if (!text) return text;
-  let s = text.trim();
-  s = s.replace(/^```[a-z]*\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
-  s = s.replace(/^(sure[,!]?|here(?:['’]s| is)|certainly[,!]?|of course[,!]?)[^\n]*:\s*\n+/i, '').trim();
-  if (
-    (s.startsWith('"') && s.endsWith('"')) ||
-    (s.startsWith('“') && s.endsWith('”')) ||
-    (s.startsWith("'") && s.endsWith("'"))
-  ) {
-    s = s.slice(1, -1).trim();
-  }
-  return s;
-}
 
 // ---- Deterministic templates -------------------------------------------------
 
@@ -90,13 +72,8 @@ function buildPrompt(kind, lead, cfg, step) {
   );
 }
 
-async function claudeGenerate(prompt, cfg) {
-  const { stdout } = await pexecFile(
-    cfg.personalizer.claudeBin,
-    ['-p', prompt, '--model', cfg.personalizer.claudeModel],
-    { timeout: 60000, maxBuffer: 1024 * 1024 }
-  );
-  return stdout.trim();
+function claudeGenerate(prompt, cfg) {
+  return runClaude(prompt, { bin: cfg.personalizer.claudeBin, model: cfg.personalizer.claudeModel, timeout: 60000 });
 }
 
 export class Personalizer {

@@ -51,6 +51,67 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_type_time ON events(type, created_at);
+
+-- ---- Inbound (content-driven) engine ----------------------------------------
+
+-- Lead magnets: the gated resource a post promises.
+CREATE TABLE IF NOT EXISTS magnets (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug        TEXT UNIQUE NOT NULL,
+  name        TEXT NOT NULL,
+  description TEXT,
+  body        TEXT,           -- generated content (markdown) or a resource URL
+  cta         TEXT,           -- the call-to-action line used in posts
+  delivery    TEXT NOT NULL DEFAULT 'dm',  -- dm | gated
+  url         TEXT,           -- external resource link, if any
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+
+-- Posts: generated content that promotes a magnet and carries a trigger keyword.
+CREATE TABLE IF NOT EXISTS posts (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  magnet_id    INTEGER,
+  status       TEXT NOT NULL DEFAULT 'draft', -- draft | scheduled | published | failed
+  body         TEXT NOT NULL,
+  hook         TEXT,           -- the variant "hook" label (for the learning loop)
+  trigger_word TEXT,           -- comment keyword that requests the magnet
+  external_ref TEXT,           -- LinkedIn post URN / URL once published
+  scheduled_at TEXT,
+  published_at TEXT,
+  last_scan_at TEXT,           -- last time we read comments on this post
+  error        TEXT,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
+
+-- Engagements: people who engaged inbound (commented the trigger / DM'd / etc.).
+CREATE TABLE IF NOT EXISTS engagements (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  post_id          INTEGER,
+  magnet_id        INTEGER,
+  name             TEXT,
+  linkedin_url     TEXT,
+  profile_ref      TEXT,        -- provider id / stable handle
+  source           TEXT NOT NULL DEFAULT 'comment', -- comment | dm | reaction
+  comment_text     TEXT,
+  status           TEXT NOT NULL DEFAULT 'engaged',
+  email            TEXT,
+  dm_sent_at       TEXT,
+  delivered_at     TEXT,
+  email_captured_at TEXT,
+  replied_at       TEXT,
+  exported_at      TEXT,
+  last_checked_at  TEXT,
+  error            TEXT,
+  created_at       TEXT NOT NULL,
+  updated_at       TEXT NOT NULL,
+  UNIQUE (post_id, profile_ref)
+);
+
+CREATE INDEX IF NOT EXISTS idx_engagements_status ON engagements(status);
 `;
 
 export class Db {
