@@ -133,7 +133,8 @@ export function loadConfig(overrides = {}) {
       dir: path.resolve(ROOT, str(process.env.IMAGE_DIR, './data/images')),
       gemini: {
         apiKey: str(process.env.GEMINI_API_KEY, ''),
-        model: str(process.env.GEMINI_IMAGE_MODEL, 'imagen-4.0-generate-001'),
+        // gemini-2.5-flash-image (free tier) via generateContent; imagen-* is paid.
+        model: str(process.env.GEMINI_IMAGE_MODEL, 'gemini-2.5-flash-image'),
       },
       openai: {
         apiKey: str(process.env.OPENAI_API_KEY, ''),

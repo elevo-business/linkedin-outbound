@@ -22,17 +22,39 @@ export class GeminiImageClient extends ImageClient {
 
   async generate(prompt, { outPath, aspectRatio = '1:1' } = {}) {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.cfg.model}:predict?key=${encodeURIComponent(this.cfg.apiKey)}`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ instances: [{ prompt }], parameters: { sampleCount: 1, aspectRatio } }),
-        signal: AbortSignal.timeout(60000),
-      });
-      const text = await res.text();
-      if (!res.ok) return { ok: false, error: `Gemini ${res.status}: ${text.slice(0, 200)}` };
-      const json = JSON.parse(text);
-      const b64 = json?.predictions?.[0]?.bytesBase64Encoded || json?.predictions?.[0]?.image?.imageBytes;
+      const base = `https://generativelanguage.googleapis.com/v1beta/models/${this.cfg.model}`;
+      const key = encodeURIComponent(this.cfg.apiKey);
+      let b64;
+      if (/^imagen/i.test(this.cfg.model)) {
+        // Imagen models use the :predict endpoint (paid tier).
+        const res = await fetch(`${base}:predict?key=${key}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ instances: [{ prompt }], parameters: { sampleCount: 1, aspectRatio } }),
+          signal: AbortSignal.timeout(60000),
+        });
+        const text = await res.text();
+        if (!res.ok) return { ok: false, error: `Gemini ${res.status}: ${text.slice(0, 200)}` };
+        const json = JSON.parse(text);
+        b64 = json?.predictions?.[0]?.bytesBase64Encoded || json?.predictions?.[0]?.image?.imageBytes;
+      } else {
+        // gemini-*-image models (e.g. the free gemini-2.5-flash-image) use
+        // :generateContent and return the image inline.
+        const res = await fetch(`${base}:generateContent?key=${key}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseModalities: ['IMAGE'] },
+          }),
+          signal: AbortSignal.timeout(60000),
+        });
+        const text = await res.text();
+        if (!res.ok) return { ok: false, error: `Gemini ${res.status}: ${text.slice(0, 200)}` };
+        const json = JSON.parse(text);
+        const parts = json?.candidates?.[0]?.content?.parts || [];
+        b64 = parts.find((p) => p?.inlineData?.data)?.inlineData?.data;
+      }
       if (!b64) return { ok: false, error: 'no image bytes in Gemini response' };
       fs.mkdirSync(path.dirname(outPath), { recursive: true });
       fs.writeFileSync(outPath, Buffer.from(b64, 'base64'));
