@@ -53,6 +53,13 @@ selectors/API shapes must be validated live on the server.
 - [x] README inbound section; scripts wired into package.json.
 - [x] End-to-end mock dry-run verified.
 
+## Phase 6 — Admin dashboard + deploy
+- [x] Password-protected admin web UI (built-in http): overview, campaigns,
+      posts/content generation, engagements, hook performance, live preflight,
+      run-a-tick. Session cookie + CSRF.
+- [x] Docker + docker-compose (admin/capture/inbound share a SQLite volume);
+      Coolify-ready. SQLite WAL for multi-process safety.
+
 ## Phase 5 — Dynamic campaigns (no single global ICP)
 - [x] `campaigns` table + repo; magnets/posts gain `campaign_id` (migration).
 - [x] ContentGenerator takes a per-campaign context (ICP/topics/trigger/voice);

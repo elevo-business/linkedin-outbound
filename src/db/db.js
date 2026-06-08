@@ -141,6 +141,12 @@ export class Db {
       fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     }
     this.sqlite = new DatabaseSync(dbPath);
+    // WAL + a busy timeout so the admin server, capture server, and the runner
+    // loop can share one SQLite file (e.g. across Coolify containers) without
+    // tripping over each other on writes.
+    if (dbPath !== ':memory:') {
+      try { this.sqlite.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;'); } catch { /* ignore */ }
+    }
     this.sqlite.exec(SCHEMA);
     this._migrate();
   }

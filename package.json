@@ -23,7 +23,8 @@
     "gen-posts": "node scripts/gen-posts.js",
     "inbound-tick": "node src/inboundRunner.js --once",
     "inbound-loop": "node src/inboundRunner.js",
-    "capture-server": "node scripts/capture-server.js"
+    "capture-server": "node scripts/capture-server.js",
+    "admin-server": "node scripts/admin-server.js"
   },
   "optionalDependencies": {
     "playwright": "^1.48.0"

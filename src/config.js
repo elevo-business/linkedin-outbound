@@ -123,6 +123,8 @@ export function loadConfig(overrides = {}) {
 
     server: {
       capturePort: num(process.env.CAPTURE_PORT, 3000),
+      adminPort: num(process.env.ADMIN_PORT, 3001),
+      adminPassword: str(process.env.ADMIN_PASSWORD, ''),
     },
 
     // CRM hand-off for captured / taken-over inbound leads.

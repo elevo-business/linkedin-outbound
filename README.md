@@ -53,6 +53,26 @@ npm run inbound-loop          # continuous, human-like pacing
 Reading comments / pending invites is far more reliable via the **Unipile** driver
 (real API) than browser scraping — recommended for the inbound flow.
 
+### Admin dashboard
+
+A password-protected web UI to **monitor and control everything** — overview
+(pipeline, captures, CRM, circuit breaker), campaigns (create/pause), content
+(generate magnets + posts, publish now), engagements, hook performance, and a
+live preflight. Run a tick from the browser.
+
+```bash
+ADMIN_PASSWORD=... npm run admin-server      # http://localhost:3001  (put behind HTTPS)
+```
+
+### Deploy (Coolify / Docker Compose)
+
+`docker-compose.yml` runs three services sharing one SQLite volume: **admin**
+(:3001), **capture** (:3000, public), and **inbound** (the loop). In Coolify:
+connect the repo via the GitHub App, pick **Docker Compose**, set the env vars
+(`UNIPILE_*`, `PIPEDRIVE_*`, `ADMIN_PASSWORD`, `CAPTURE_BASE_URL`, `WARMUP_UNTIL`,
+`PERSONALIZER=claude-cli`, …), and deploy. The `data` volume persists the DB
+across deploys; SQLite runs in WAL mode so the three services share it safely.
+
 Captured / taken-over leads are pushed to **Pipedrive** automatically
 (`CRM_PROVIDER=pipedrive`, `PIPEDRIVE_API_TOKEN`); on email capture and/or on reply
 (`CRM_CREATE_ON`). `npm run status` shows posts, engagements, click/capture/CRM

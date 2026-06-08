@@ -1,0 +1,47 @@
+# Coolify-friendly multi-service deploy. Three long-running processes share one
+# SQLite file via the `data` volume:
+#   admin    — password-protected dashboard (monitor + control)        :3001
+#   capture  — public gated landing pages + email capture + tracking   :3000
+#   inbound  — the content loop (publish, scan comments, deliver)       (no port)
+#
+# Set env vars in Coolify (UNIPILE_*, PIPEDRIVE_*, ADMIN_PASSWORD, CAPTURE_BASE_URL,
+# WARMUP_UNTIL, PERSONALIZER=claude-cli, campaign defaults, …). A local .env is
+# used if present, otherwise Coolify's injected environment applies.
+
+services:
+  admin:
+    build: .
+    command: node scripts/admin-server.js
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "3001:3001"
+    volumes:
+      - data:/app/data
+    restart: unless-stopped
+
+  capture:
+    build: .
+    command: node scripts/capture-server.js
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "3000:3000"
+    volumes:
+      - data:/app/data
+    restart: unless-stopped
+
+  inbound:
+    build: .
+    command: node src/inboundRunner.js
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - data:/app/data
+    restart: unless-stopped
+
+volumes:
+  data:
