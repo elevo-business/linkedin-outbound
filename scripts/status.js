@@ -30,9 +30,14 @@ console.log(`  invites today   ${db.countEventsSince('invite_sent', DAY, now)} /
 console.log(`  invites week    ${db.countEventsSince('invite_sent', WEEK, now)} / ${config.limits.invitesPerWeek}`);
 console.log(`  noted invites   ${notedMonth} / ${config.invites.maxNotedPerMonth || '∞'} (last 30d)`);
 console.log(`  messages today  ${db.countEventsSince('message_sent', DAY, now)} / ${config.limits.messagesPerDay}`);
+if (config.email.channel !== 'none') {
+  const enrolled = db.get(`SELECT COUNT(*) AS n FROM leads WHERE email_enrolled_at IS NOT NULL`).n;
+  console.log(`  email enrolled  ${enrolled} (fallback channel)`);
+}
 
 console.log('\n=== Config ===');
 console.log(`  driver          ${config.driver}`);
+console.log(`  email channel   ${config.email.channel}${config.email.channel !== 'none' ? ` (campaign ${config.email.instantly.campaignId || '—'})` : ''}`);
 console.log(`  warmup until    ${config.warmupUntil}  (${now < new Date(config.warmupUntil) ? 'BLOCKING — no sends' : 'passed — active'})`);
 console.log(`  work hours      ${config.work.hoursStart}:00–${config.work.hoursEnd}:00, days ${config.work.days.join(',')}`);
 console.log(`  within window   ${rate.withinWorkHours(now)}`);

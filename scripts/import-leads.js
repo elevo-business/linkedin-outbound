@@ -3,8 +3,8 @@
 //   node scripts/import-leads.js leads.csv
 //
 // Expected header columns (case-insensitive, order-free):
-//   linkedin_url, name, headline, company, role, location, notes
-// Only linkedin_url is required.
+//   linkedin_url, name, headline, company, role, location, email, notes
+// Only linkedin_url is required. `email` enables the optional email fallback channel.
 
 import fs from 'node:fs';
 import { loadConfig } from '../src/config.js';
@@ -69,6 +69,7 @@ function main() {
       company: pick(row, idx('company')),
       role: pick(row, idx('role')),
       location: pick(row, idx('location')),
+      email: pick(row, idx('email')),
       notes: pick(row, idx('notes')),
     });
     imported++;

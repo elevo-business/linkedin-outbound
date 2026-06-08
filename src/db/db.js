@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS leads (
   company       TEXT,
   role          TEXT,
   location      TEXT,
+  email         TEXT,
   notes         TEXT,
   status        TEXT NOT NULL DEFAULT 'new',
   created_at    TEXT NOT NULL,
@@ -35,6 +36,7 @@ CREATE TABLE IF NOT EXISTS leads (
   done_at       TEXT,
   withdrawn_at  TEXT,
   last_checked_at TEXT,
+  email_enrolled_at TEXT,
   error         TEXT
 );
 
@@ -70,6 +72,8 @@ export class Db {
     };
     add('withdrawn_at', 'TEXT');
     add('last_checked_at', 'TEXT');
+    add('email', 'TEXT');
+    add('email_enrolled_at', 'TEXT');
   }
 
   close() {

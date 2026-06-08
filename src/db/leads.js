@@ -36,6 +36,7 @@ export class Leads {
            company = COALESCE($company, company),
            role = COALESCE($role, role),
            location = COALESCE($location, location),
+           email = COALESCE($email, email),
            notes = COALESCE($notes, notes),
            updated_at = $now
          WHERE id = $id`,
@@ -46,6 +47,7 @@ export class Leads {
           company: lead.company ?? null,
           role: lead.role ?? null,
           location: lead.location ?? null,
+          email: lead.email ?? null,
           notes: lead.notes ?? null,
           now,
         }
@@ -54,9 +56,9 @@ export class Leads {
     }
     const res = this.db.run(
       `INSERT INTO leads
-         (linkedin_url, name, headline, company, role, location, notes, status, created_at, updated_at)
+         (linkedin_url, name, headline, company, role, location, email, notes, status, created_at, updated_at)
        VALUES
-         ($url, $name, $headline, $company, $role, $location, $notes, 'new', $now, $now)`,
+         ($url, $name, $headline, $company, $role, $location, $email, $notes, 'new', $now, $now)`,
       {
         url: lead.linkedin_url,
         name: lead.name ?? null,
@@ -64,6 +66,7 @@ export class Leads {
         company: lead.company ?? null,
         role: lead.role ?? null,
         location: lead.location ?? null,
+        email: lead.email ?? null,
         notes: lead.notes ?? null,
         now,
       }
@@ -103,6 +106,25 @@ export class Leads {
   // not a content change).
   markChecked(id, now = new Date().toISOString()) {
     this.db.run(`UPDATE leads SET last_checked_at = $now WHERE id = $id`, { id, now });
+  }
+
+  // Marks a lead as enrolled into the email (fallback) channel.
+  markEmailEnrolled(id, now = new Date().toISOString()) {
+    this.db.run(`UPDATE leads SET email_enrolled_at = $now, updated_at = $now WHERE id = $id`, { id, now });
+  }
+
+  // Email-enrolled leads still worth watching for a reply (not already pulled out
+  // or finished), oldest-checked first, capped at `limit`.
+  emailDueForCheck(cutoffIso, limit) {
+    return this.db.all(
+      `SELECT * FROM leads
+         WHERE email_enrolled_at IS NOT NULL
+           AND status NOT IN ('replied', 'done', 'failed')
+           AND (last_checked_at IS NULL OR last_checked_at < $cutoff)
+         ORDER BY last_checked_at ASC
+         LIMIT $limit`,
+      { cutoff: cutoffIso, limit }
+    );
   }
 
   counts() {

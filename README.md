@@ -39,7 +39,8 @@ SQLite pipeline:  new → invited → connected → messaged → followup_1 → 
                                                    └────────────► replied (you take over)
       │
    Sequencer (one human-like action per "tick")
-      ├─ access layer:  Playwright (real) | Mock (dry-run) | Unipile (future)
+      ├─ access layer:  Playwright (real) | Unipile (hosted) | Mock (dry-run)
+      ├─ email fallback: Instantly | Mock | none   (optional second channel)
       ├─ personalizer:  Claude via your Max plan (headless CLI) | local templates
       ├─ rate limiter:  daily/weekly/hourly caps + work hours + ramp-up
       └─ notifier:      console | Telegram  (pings you on replies)
@@ -137,11 +138,12 @@ All settings live in `.env` (see `.env.example` for the full list). Key ones:
 ## Lead CSV format
 
 ```csv
-linkedin_url,name,headline,company,role,location,notes
-https://www.linkedin.com/in/jane-doe,Jane Doe,Head of Sales,Acme,Head of Sales,Berlin,met at event
+linkedin_url,name,headline,company,role,location,email,notes
+https://www.linkedin.com/in/jane-doe,Jane Doe,Head of Sales,Acme,Head of Sales,Berlin,jane@acme.com,met at event
 ```
 
-Only `linkedin_url` is required. Re-importing the same URL updates the lead.
+Only `linkedin_url` is required. `email` is optional and enables the email
+fallback channel for that lead. Re-importing the same URL updates the lead.
 
 ## Project layout
 
@@ -150,7 +152,9 @@ src/
   config.js              env + .env loader
   db/{db,leads}.js       SQLite + lead repository / status machine
   linkedin/              access layer: LinkedInClient (interface), MockClient,
-                         PlaywrightClient, index.js (factory)
+                         PlaywrightClient, UnipileClient, index.js (factory)
+  email/                 fallback channel: EmailClient (interface), MockEmailClient,
+                         InstantlyClient, index.js (factory)
   ai/personalizer.js     Claude-CLI + local templates
   core/{rateLimiter,sequencer}.js   limits + the brain
   notify/notifier.js     console / Telegram
@@ -159,11 +163,29 @@ scripts/                 import-leads, status, login
 test/                    node:test suite (run: npm test)
 ```
 
-## Swapping to Unipile later
+## Swapping to Unipile
 
-Add `src/linkedin/UnipileClient.js` implementing the same `LinkedInClient`
-interface, register it in `src/linkedin/index.js`, set `LINKEDIN_DRIVER=unipile`.
-Nothing else changes.
+`src/linkedin/UnipileClient.js` implements the same `LinkedInClient` interface via
+Unipile's hosted API (it holds the LinkedIn session for you — no local browser,
+login script, or proxy). To switch: set `LINKEDIN_DRIVER=unipile` and fill in
+`UNIPILE_DSN`, `UNIPILE_API_KEY`, `UNIPILE_ACCOUNT_ID`. Nothing else changes.
+
+> Honest caveat: like the Playwright selectors, Unipile's exact API field shapes
+> (provider ids, invite/chat endpoints) must be confirmed against your account
+> before trusting it — the client is written defensively but unverified live.
+
+## Email fallback channel (Instantly)
+
+LinkedIn is the focus; **email is the fallback**. Enable it with
+`EMAIL_CHANNEL=instantly` (+ `INSTANTLY_API_KEY`, `INSTANTLY_CAMPAIGN_ID`). Then:
+
+- When a LinkedIn invite is **withdrawn as stale** and the lead has an `email`,
+  the lead is enrolled into your Instantly campaign (`EMAIL_HANDOFF_ON_WITHDRAW`).
+- An **email reply** pulls the lead out of the machine (→ `replied`).
+- A **LinkedIn reply** pauses the lead's email sequence, so you never double-touch.
+
+Same swappable pattern as the access layer: `EmailClient` interface +
+`InstantlyClient` / `MockEmailClient` (`EMAIL_CHANNEL=mock` for dry-runs).
 
 ## Limitations / honesty
 

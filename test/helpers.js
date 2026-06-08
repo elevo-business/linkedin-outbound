@@ -7,6 +7,8 @@ import { loadConfig } from '../src/config.js';
 import { Db } from '../src/db/db.js';
 import { Leads } from '../src/db/leads.js';
 import { MockClient } from '../src/linkedin/MockClient.js';
+import { MockEmailClient } from '../src/email/MockEmailClient.js';
+import { NullEmailClient } from '../src/email/EmailClient.js';
 import { Personalizer } from '../src/ai/personalizer.js';
 import { RateLimiter } from '../src/core/rateLimiter.js';
 import { Notifier } from '../src/notify/notifier.js';
@@ -31,22 +33,29 @@ export function testConfig(overrides = {}) {
   });
 }
 
-export function buildHarness({ config = testConfig(), clientOpts = {}, clock = makeClock() } = {}) {
+export function buildHarness({ config = testConfig(), clientOpts = {}, emailClientOpts = null, clock = makeClock() } = {}) {
   const db = new Db(':memory:');
   const leads = new Leads(db);
   const client = new MockClient({ logger: () => {}, ...clientOpts });
+  // Opt into the email channel only when a test passes emailClientOpts.
+  const email = emailClientOpts ? new MockEmailClient({ logger: () => {}, ...emailClientOpts }) : new NullEmailClient();
   const personalizer = new Personalizer(config, () => {});
   const rateLimiter = new RateLimiter(db, config);
   const notifier = new Notifier({ notify: { driver: 'console' } }, () => {});
-  const sequencer = new Sequencer({ db, leads, client, personalizer, rateLimiter, notifier, config, clock, logger: () => {} });
-  return { db, leads, client, personalizer, rateLimiter, notifier, sequencer, config, clock };
+  const sequencer = new Sequencer({ db, leads, client, email, personalizer, rateLimiter, notifier, config, clock, logger: () => {} });
+  return { db, leads, client, email, personalizer, rateLimiter, notifier, sequencer, config, clock };
 }
 
-export function seedLeads(leads, n, prefix = 'p') {
+export function seedLeads(leads, n, prefix = 'p', { withEmail = false } = {}) {
   const ids = [];
   for (let i = 0; i < n; i++) {
     ids.push(
-      leads.upsert({ linkedin_url: `https://linkedin.com/in/${prefix}${i}`, name: `Person ${i}`, company: `Co${i}` })
+      leads.upsert({
+        linkedin_url: `https://linkedin.com/in/${prefix}${i}`,
+        name: `Person ${i}`,
+        company: `Co${i}`,
+        email: withEmail ? `person${i}@example.com` : null,
+      })
     );
   }
   return ids;

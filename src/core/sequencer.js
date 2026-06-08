@@ -16,6 +16,7 @@
 // Everything time-related goes through `clock()` so tests control the clock.
 
 import { STATUS } from '../db/leads.js';
+import { NullEmailClient } from '../email/EmailClient.js';
 
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
@@ -23,10 +24,11 @@ const MONTH = 30 * DAY;
 const daysSince = (iso, now) => (iso ? (now.getTime() - new Date(iso).getTime()) / DAY : Infinity);
 
 export class Sequencer {
-  constructor({ db, leads, client, personalizer, rateLimiter, notifier, config, clock, logger }) {
+  constructor({ db, leads, client, personalizer, rateLimiter, notifier, config, clock, logger, email }) {
     this.db = db;
     this.leads = leads;
     this.client = client;
+    this.email = email || new NullEmailClient();
     this.personalizer = personalizer;
     this.rate = rateLimiter;
     this.notifier = notifier;
@@ -43,6 +45,7 @@ export class Sequencer {
       replies: [],
       connected: [],
       withdrawn: [],
+      enrolled: [],
       expired: [],
       sent: null,
     };
@@ -70,6 +73,7 @@ export class Sequencer {
     if (await this._tripIfBlocked(now, summary)) return summary;
     await this._withdrawStaleInvites(now, summary);
     if (await this._tripIfBlocked(now, summary)) return summary;
+    await this._checkEmailReplies(now, summary);
     this._expireFollowups(now, summary);
 
     // 4) At most one outbound send this tick (priority: nurture > new outreach).
@@ -126,13 +130,46 @@ export class Sequencer {
           summary.connected.push(lead.id);
         }
       } else if (await this.client.hasReply(lead)) {
-        this.leads.setStatus(lead.id, STATUS.REPLIED, { stampColumn: 'replied_at' }, nowIso);
-        this.db.logEvent(lead.id, 'reply_detected', null, nowIso);
-        await this.notifier.send(`💬 Reply from ${lead.name || lead.linkedin_url} — take over the conversation.`);
+        await this._markReplied(lead, 'linkedin', now);
         summary.replies.push(lead.id);
       }
       this.leads.markChecked(lead.id, nowIso);
       if (this.client.isBlocked && this.client.isBlocked()) break;
+    }
+  }
+
+  // Pull a lead out of the machine on a reply (on either channel) and, if it was
+  // also enrolled in email, pause that sequence so we never double-touch.
+  async _markReplied(lead, channel, now) {
+    const nowIso = now.toISOString();
+    this.leads.setStatus(lead.id, STATUS.REPLIED, { stampColumn: 'replied_at' }, nowIso);
+    this.db.logEvent(lead.id, 'reply_detected', channel, nowIso);
+    if (this.email.enabled && lead.email_enrolled_at) {
+      const res = await this.email.pause(lead);
+      if (res.ok) this.db.logEvent(lead.id, 'email_paused', channel, nowIso);
+    }
+    await this.notifier.send(
+      `💬 Reply from ${lead.name || lead.linkedin_url} (${channel}) — take over the conversation.`
+    );
+  }
+
+  // Watch email-enrolled leads for a reply on the email channel. Throttled like
+  // the LinkedIn checks (shared last_checked_at + maxPerTick budget).
+  async _checkEmailReplies(now, summary) {
+    if (!this.email.enabled) return;
+    const nowIso = now.toISOString();
+    const cutoff = new Date(now.getTime() - this.cfg.checks.intervalHours * HOUR).toISOString();
+    const due = this.leads.emailDueForCheck(cutoff, this.cfg.checks.maxPerTick);
+    for (const lead of due) {
+      try {
+        if (await this.email.hasReply(lead)) {
+          await this._markReplied(lead, 'email', now);
+          summary.replies.push(lead.id);
+        }
+      } catch (err) {
+        this.log(`[email] hasReply error: ${err.message}`);
+      }
+      this.leads.markChecked(lead.id, nowIso);
     }
   }
 
@@ -151,10 +188,28 @@ export class Sequencer {
         this.leads.setStatus(lead.id, STATUS.WITHDRAWN, { stampColumn: 'withdrawn_at' }, nowIso);
         this.db.logEvent(lead.id, 'invite_withdrawn', null, nowIso);
         summary.withdrawn.push(lead.id);
+        // LinkedIn didn't connect — hand the lead to email as the fallback channel.
+        await this._maybeEnrollEmail(lead, now, summary);
       } else {
         this.db.logEvent(lead.id, 'withdraw_failed', res.error, nowIso);
       }
       if (this.client.isBlocked && this.client.isBlocked()) break;
+    }
+  }
+
+  // Enroll a lead into the email channel if it's enabled, configured to hand off,
+  // the lead has an email, and it isn't already enrolled.
+  async _maybeEnrollEmail(lead, now, summary) {
+    if (!this.email.enabled || !this.cfg.email.handoffOnWithdraw) return;
+    if (!lead.email || lead.email_enrolled_at) return;
+    const nowIso = now.toISOString();
+    const res = await this.email.enroll(lead);
+    if (res.ok) {
+      this.leads.markEmailEnrolled(lead.id, nowIso);
+      this.db.logEvent(lead.id, 'email_enrolled', null, nowIso);
+      summary.enrolled.push(lead.id);
+    } else if (!res.skipped) {
+      this.db.logEvent(lead.id, 'email_enroll_failed', res.error, nowIso);
     }
   }
 
@@ -227,13 +282,26 @@ export class Sequencer {
 
     const note = useNote ? await this.personalizer.note(next) : null;
     const res = await this.client.sendConnectionRequest(next, note);
+    const nowIso = now.toISOString();
     if (!res.ok) {
-      this.leads.setStatus(next.id, STATUS.FAILED, { error: res.error }, now.toISOString());
-      this.db.logEvent(next.id, 'invite_failed', res.error, now.toISOString());
+      // Already a 1st-degree connection: skip the invite, jump straight to the DM track.
+      if (res.reason === 'already_connected') {
+        this.leads.setStatus(next.id, STATUS.CONNECTED, { stampColumn: 'connected_at' }, nowIso);
+        this.db.logEvent(next.id, 'already_connected', null, nowIso);
+        return { action: 'already_connected', leadId: next.id };
+      }
+      // Invite already pending (e.g. sent manually): track it instead of failing.
+      if (res.reason === 'pending') {
+        this.leads.setStatus(next.id, STATUS.INVITED, { stampColumn: 'invited_at' }, nowIso);
+        this.db.logEvent(next.id, 'invite_pending', null, nowIso);
+        return { action: 'invite_pending', leadId: next.id };
+      }
+      this.leads.setStatus(next.id, STATUS.FAILED, { error: res.error }, nowIso);
+      this.db.logEvent(next.id, 'invite_failed', res.error, nowIso);
       return { action: 'invite_failed', leadId: next.id, error: res.error };
     }
-    this.leads.setStatus(next.id, STATUS.INVITED, { stampColumn: 'invited_at' }, now.toISOString());
-    this.db.logEvent(next.id, 'invite_sent', useNote ? 'noted' : 'plain', now.toISOString());
+    this.leads.setStatus(next.id, STATUS.INVITED, { stampColumn: 'invited_at' }, nowIso);
+    this.db.logEvent(next.id, 'invite_sent', useNote ? 'noted' : 'plain', nowIso);
     return { action: 'invite', leadId: next.id, note, noted: useNote };
   }
 }

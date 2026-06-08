@@ -7,6 +7,7 @@ import { loadConfig } from './config.js';
 import { Db } from './db/db.js';
 import { Leads } from './db/leads.js';
 import { createClient } from './linkedin/index.js';
+import { createEmailClient } from './email/index.js';
 import { Personalizer } from './ai/personalizer.js';
 import { RateLimiter } from './core/rateLimiter.js';
 import { Notifier } from './notify/notifier.js';
@@ -19,11 +20,12 @@ export async function buildSequencer(config, logger = console.log) {
   const db = new Db(config.dbPath);
   const leads = new Leads(db);
   const client = await createClient(config, logger);
+  const email = await createEmailClient(config, logger);
   const personalizer = new Personalizer(config, logger);
   const rateLimiter = new RateLimiter(db, config);
   const notifier = new Notifier(config, logger);
-  const sequencer = new Sequencer({ db, leads, client, personalizer, rateLimiter, notifier, config, logger });
-  return { db, client, sequencer };
+  const sequencer = new Sequencer({ db, leads, client, email, personalizer, rateLimiter, notifier, config, logger });
+  return { db, client, email, sequencer };
 }
 
 function describe(summary) {
@@ -32,6 +34,7 @@ function describe(summary) {
   if (summary.replies.length) parts.push(`replies=${summary.replies.length}`);
   if (summary.connected.length) parts.push(`accepted=${summary.connected.length}`);
   if (summary.withdrawn?.length) parts.push(`withdrawn=${summary.withdrawn.length}`);
+  if (summary.enrolled?.length) parts.push(`email=${summary.enrolled.length}`);
   if (summary.expired.length) parts.push(`done=${summary.expired.length}`);
   if (summary.sent) parts.push(`sent=${summary.sent.action}#${summary.sent.leadId}`);
   return parts.length ? parts.join(' ') : 'nothing to do';
@@ -40,12 +43,13 @@ function describe(summary) {
 async function main() {
   const once = process.argv.includes('--once');
   const config = loadConfig();
-  const { db, client, sequencer } = await buildSequencer(config);
+  const { db, client, email, sequencer } = await buildSequencer(config);
 
   const login = await client.login();
   if (!login.ok) {
     console.error(`Login failed: ${login.error}`);
     await client.close();
+    await email.close();
     db.close();
     process.exit(1);
   }
@@ -54,6 +58,7 @@ async function main() {
     const summary = await sequencer.tick();
     console.log(`[tick] ${describe(summary)}`);
     await client.close();
+    await email.close();
     db.close();
     return;
   }
@@ -80,6 +85,7 @@ async function main() {
   }
 
   await client.close();
+  await email.close();
   db.close();
 }
 

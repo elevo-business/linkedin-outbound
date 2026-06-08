@@ -12,7 +12,10 @@ export async function createClient(config, logger = console.log) {
       const { PlaywrightClient } = await import('./PlaywrightClient.js');
       return new PlaywrightClient(config, logger);
     }
-    // Future: case 'unipile': return new UnipileClient(config, logger);
+    case 'unipile': {
+      const { UnipileClient } = await import('./UnipileClient.js');
+      return new UnipileClient(config, logger);
+    }
     default:
       throw new Error(`Unknown LINKEDIN_DRIVER: ${config.driver}`);
   }

@@ -125,7 +125,12 @@ export class PlaywrightClient extends LinkedInClient {
         }
       }
       if (!(await connectBtn.count())) {
-        return { ok: false, error: 'Connect button not found (already connected/pending?)' };
+        // No Connect button: figure out why so the sequencer can route correctly.
+        const pending = this.page.getByRole('button', { name: /Pending/i }).first();
+        if (await pending.count()) return { ok: false, reason: 'pending' };
+        const message = this.page.getByRole('button', { name: /^Message$/i }).first();
+        if (await message.count()) return { ok: false, reason: 'already_connected' };
+        return { ok: false, error: 'Connect button not found' };
       }
       await connectBtn.click();
       await humanPause();

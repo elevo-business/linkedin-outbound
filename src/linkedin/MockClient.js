@@ -11,6 +11,7 @@ export class MockClient extends LinkedInClient {
    * @param {(lead)=>boolean} [opts.reply]         whether a messaged lead has replied
    * @param {boolean} [opts.failConnect]           force connection requests to fail
    * @param {boolean} [opts.failWithdraw]          force invite withdrawals to fail
+   * @param {(lead)=>boolean} [opts.alreadyConnected] lead is already a 1st-degree connection
    * @param {boolean} [opts.blocked]               simulate a checkpoint/ban (isBlocked)
    * @param {(msg:string)=>void} [opts.logger]
    */
@@ -20,6 +21,7 @@ export class MockClient extends LinkedInClient {
     this.reply = opts.reply ?? (() => false);
     this.failConnect = opts.failConnect ?? false;
     this.failWithdraw = opts.failWithdraw ?? false;
+    this.alreadyConnected = opts.alreadyConnected ?? (() => false);
     this.blocked = opts.blocked ?? false;
     this.logger = opts.logger ?? (() => {});
     this.actions = []; // recorded calls, useful for assertions
@@ -31,6 +33,7 @@ export class MockClient extends LinkedInClient {
   }
 
   async sendConnectionRequest(lead, note) {
+    if (this.alreadyConnected(lead)) return { ok: false, reason: 'already_connected' };
     this.actions.push({ type: 'invite', url: lead.linkedin_url, note });
     this.logger(`[mock] invite -> ${lead.name || lead.linkedin_url}: "${note}"`);
     if (this.failConnect) return { ok: false, error: 'mock: failConnect' };

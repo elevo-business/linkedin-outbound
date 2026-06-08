@@ -117,6 +117,26 @@ export function loadConfig(overrides = {}) {
       headless: bool(process.env.HEADLESS, true),
     },
 
+    // Unipile access layer (paid, more stable than Playwright). Same interface.
+    unipile: {
+      dsn: str(process.env.UNIPILE_DSN, ''), // e.g. https://apiXXX.unipile.com:13XXX
+      apiKey: str(process.env.UNIPILE_API_KEY, ''),
+      accountId: str(process.env.UNIPILE_ACCOUNT_ID, ''), // the connected LinkedIn account
+    },
+
+    // Optional second channel: email via Instantly. `none` disables it entirely.
+    email: {
+      channel: str(process.env.EMAIL_CHANNEL, 'none'), // none | instantly | mock
+      // Hand a lead to email once its LinkedIn invite is withdrawn as stale and
+      // the lead has an email address. Email is the fallback channel.
+      handoffOnWithdraw: bool(process.env.EMAIL_HANDOFF_ON_WITHDRAW, true),
+      instantly: {
+        baseUrl: str(process.env.INSTANTLY_BASE_URL, 'https://api.instantly.ai/api/v2'),
+        apiKey: str(process.env.INSTANTLY_API_KEY, ''),
+        campaignId: str(process.env.INSTANTLY_CAMPAIGN_ID, ''),
+      },
+    },
+
     notify: {
       driver: str(process.env.NOTIFY_DRIVER, 'console'),
       telegramToken: str(process.env.TELEGRAM_BOT_TOKEN, ''),
