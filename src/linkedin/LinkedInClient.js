@@ -35,6 +35,32 @@ export class LinkedInClient {
     throw new Error('not implemented');
   }
 
+  // ---- inbound (content-driven) surface --------------------------------------
+
+  /** Publish a post. Returns { ok, ref?, error? } (ref = the post URN/URL). */
+  async publishPost(_text) {
+    throw new Error('not implemented');
+  }
+
+  /**
+   * Read comments on a published post. `post` is the stored post row (has
+   * external_ref). Returns an array of
+   *   { name, profileUrl, profileRef, text, commentId }
+   */
+  async getPostComments(_post) {
+    throw new Error('not implemented');
+  }
+
+  /** Pending incoming connection requests: [{ name, profileRef, invitationId }] */
+  async getPendingInvites() {
+    throw new Error('not implemented');
+  }
+
+  /** Accept an incoming connection request. Returns { ok, error? } */
+  async acceptInvite(_invite) {
+    throw new Error('not implemented');
+  }
+
   /**
    * True once the driver has seen a hard block (checkpoint / auth wall / account
    * restriction). The sequencer uses this to trip a circuit breaker and stop

@@ -17,7 +17,9 @@
     "run-loop": "node src/runner.js",
     "status": "node scripts/status.js",
     "gen-magnet": "node scripts/gen-magnet.js",
-    "gen-posts": "node scripts/gen-posts.js"
+    "gen-posts": "node scripts/gen-posts.js",
+    "inbound-tick": "node src/inboundRunner.js --once",
+    "inbound-loop": "node src/inboundRunner.js"
   },
   "optionalDependencies": {
     "playwright": "^1.48.0"

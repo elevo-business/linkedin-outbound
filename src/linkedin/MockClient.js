@@ -13,16 +13,23 @@ export class MockClient extends LinkedInClient {
    * @param {boolean} [opts.failWithdraw]          force invite withdrawals to fail
    * @param {(lead)=>boolean} [opts.alreadyConnected] lead is already a 1st-degree connection
    * @param {boolean} [opts.blocked]               simulate a checkpoint/ban (isBlocked)
+   * @param {(post)=>Array} [opts.comments]        comments returned for a published post
+   * @param {()=>Array} [opts.pendingInvites]      incoming connection requests
+   * @param {boolean} [opts.failPublish]           force post publishing to fail
    * @param {(msg:string)=>void} [opts.logger]
    */
   constructor(opts = {}) {
     super();
-    this.acceptInvite = opts.acceptInvite ?? (() => false);
+    this.acceptInviteFn = opts.acceptInvite ?? (() => false);
     this.reply = opts.reply ?? (() => false);
     this.failConnect = opts.failConnect ?? false;
     this.failWithdraw = opts.failWithdraw ?? false;
     this.alreadyConnected = opts.alreadyConnected ?? (() => false);
     this.blocked = opts.blocked ?? false;
+    this.comments = opts.comments ?? (() => []);
+    this.pendingInvites = opts.pendingInvites ?? (() => []);
+    this.failPublish = opts.failPublish ?? false;
+    this._postSeq = 0;
     this.logger = opts.logger ?? (() => {});
     this.actions = []; // recorded calls, useful for assertions
   }
@@ -41,7 +48,7 @@ export class MockClient extends LinkedInClient {
   }
 
   async isConnected(lead) {
-    return Boolean(this.acceptInvite(lead));
+    return Boolean(this.acceptInviteFn(lead));
   }
 
   async sendMessage(lead, text) {
@@ -63,5 +70,27 @@ export class MockClient extends LinkedInClient {
 
   isBlocked() {
     return Boolean(this.blocked);
+  }
+
+  // ---- inbound surface ----
+  async publishPost(text) {
+    this.actions.push({ type: 'publish', text });
+    this.logger(`[mock] publish post: "${String(text).slice(0, 60)}…"`);
+    if (this.failPublish) return { ok: false, error: 'mock: failPublish' };
+    return { ok: true, ref: `urn:mock:post:${++this._postSeq}` };
+  }
+
+  async getPostComments(post) {
+    return this.comments(post) || [];
+  }
+
+  async getPendingInvites() {
+    return this.pendingInvites() || [];
+  }
+
+  async acceptInvite(invite) {
+    this.actions.push({ type: 'accept', invite });
+    this.logger(`[mock] accept invite: ${invite?.name || invite?.profileRef}`);
+    return { ok: true };
   }
 }

@@ -179,4 +179,71 @@ export class UnipileClient extends LinkedInClient {
       return { ok: false, error: String(err?.message || err) };
     }
   }
+
+  // ---- inbound surface -------------------------------------------------------
+
+  async publishPost(text) {
+    try {
+      const out = await this._req('POST', '/posts', { account_id: this.cfg.accountId, text });
+      return { ok: true, ref: out?.id || out?.post_id || out?.share_id || null };
+    } catch (err) {
+      return { ok: false, error: String(err?.message || err) };
+    }
+  }
+
+  async getPostComments(post) {
+    if (!post?.external_ref) return [];
+    try {
+      const out = await this._req(
+        'GET',
+        `/posts/${encodeURIComponent(post.external_ref)}/comments?account_id=${this.cfg.accountId}&limit=100`
+      );
+      const items = out?.items || out?.data || [];
+      return items.map((c) => {
+        const author = c.author || c.from || {};
+        const handle = author.public_identifier || author.public_id || null;
+        return {
+          name: author.name || [author.first_name, author.last_name].filter(Boolean).join(' ') || null,
+          profileUrl: handle ? `https://www.linkedin.com/in/${handle}` : null,
+          profileRef: author.provider_id || author.id || handle || null,
+          text: c.text || c.body || '',
+          commentId: c.id || null,
+        };
+      });
+    } catch (err) {
+      this.log(`[unipile] getPostComments error: ${err.message}`);
+      return [];
+    }
+  }
+
+  async getPendingInvites() {
+    try {
+      const out = await this._req('GET', `/users/invite/received?account_id=${this.cfg.accountId}&limit=100`);
+      const items = out?.items || out?.data || [];
+      return items.map((i) => {
+        const from = i.from || i.user || {};
+        return {
+          name: from.name || null,
+          profileRef: from.provider_id || from.id || null,
+          invitationId: i.id || i.invitation_id || null,
+        };
+      });
+    } catch (err) {
+      this.log(`[unipile] getPendingInvites error: ${err.message}`);
+      return [];
+    }
+  }
+
+  async acceptInvite(invite) {
+    try {
+      if (!invite?.invitationId) return { ok: false, error: 'no invitationId' };
+      await this._req(
+        'POST',
+        `/users/invite/received/${encodeURIComponent(invite.invitationId)}/accept?account_id=${this.cfg.accountId}`
+      );
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: String(err?.message || err) };
+    }
+  }
 }

@@ -246,6 +246,106 @@ export class PlaywrightClient extends LinkedInClient {
     }
   }
 
+  // ---- inbound surface -------------------------------------------------------
+  // NOTE: reading comments / pending invites by scraping is brittle. For the
+  // inbound flow, the Unipile driver (real API) is strongly recommended.
+
+  async publishPost(text) {
+    try {
+      if (!this.page) await this._launch();
+      await this.page.goto('https://www.linkedin.com/feed/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await humanPause();
+      if (this._onCheckpoint()) { this.blocked = true; return { ok: false, error: 'CHECKPOINT' }; }
+      const start = this.page.getByRole('button', { name: /Start a post/i }).first();
+      if (!(await start.count())) return { ok: false, error: 'Start a post button not found' };
+      await start.click();
+      await humanPause();
+      const editor = this.page.locator('div.ql-editor[contenteditable="true"], div[role="textbox"]').first();
+      if (!(await editor.count())) return { ok: false, error: 'post editor not found' };
+      await this._typeHuman(editor, text);
+      await humanPause();
+      const post = this.page.getByRole('button', { name: /^Post$/i }).first();
+      if (!(await post.count())) return { ok: false, error: 'Post button not found' };
+      await post.click();
+      await humanPause();
+      // We cannot reliably read back the new post URN from the DOM here.
+      return { ok: true, ref: null };
+    } catch (err) {
+      return { ok: false, error: String(err?.message || err) };
+    }
+  }
+
+  async getPostComments(post) {
+    if (!post?.external_ref) return [];
+    try {
+      await this.page.goto(post.external_ref, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await humanPause();
+      if (this._onCheckpoint()) { this.blocked = true; return []; }
+      const items = this.page.locator('article.comments-comment-entity, .comments-comment-item');
+      const n = await items.count();
+      const out = [];
+      for (let i = 0; i < n; i++) {
+        const it = items.nth(i);
+        const name = (await it.locator('.comments-comment-meta__description-title, .comments-post-meta__name-text').first().textContent().catch(() => '')) || '';
+        const href = (await it.locator('a[href*="/in/"]').first().getAttribute('href').catch(() => '')) || '';
+        const text = (await it.locator('.comments-comment-item__main-content, .update-components-text').first().textContent().catch(() => '')) || '';
+        out.push({ name: name.trim(), profileUrl: href.split('?')[0], profileRef: this._refFromHref(href), text: text.trim(), commentId: `${post.id}:${i}` });
+      }
+      return out;
+    } catch (err) {
+      this.log(`[playwright] getPostComments error: ${err.message}`);
+      return [];
+    }
+  }
+
+  _refFromHref(href) {
+    const m = String(href || '').match(/\/in\/([^/?#]+)/);
+    return m ? m[1] : null;
+  }
+
+  async getPendingInvites() {
+    try {
+      await this.page.goto('https://www.linkedin.com/mynetwork/invitation-manager/received/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await humanPause();
+      if (this._onCheckpoint()) { this.blocked = true; return []; }
+      const cards = this.page.locator('.invitation-card, li.mn-invitation-list__item');
+      const n = await cards.count();
+      const out = [];
+      for (let i = 0; i < n; i++) {
+        const c = cards.nth(i);
+        const name = (await c.locator('.invitation-card__title, a[href*="/in/"] span').first().textContent().catch(() => '')) || '';
+        const href = (await c.locator('a[href*="/in/"]').first().getAttribute('href').catch(() => '')) || '';
+        out.push({ name: name.trim(), profileRef: this._refFromHref(href), invitationId: this._refFromHref(href) });
+      }
+      return out;
+    } catch (err) {
+      this.log(`[playwright] getPendingInvites error: ${err.message}`);
+      return [];
+    }
+  }
+
+  async acceptInvite(invite) {
+    try {
+      await this.page.goto('https://www.linkedin.com/mynetwork/invitation-manager/received/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await humanPause();
+      if (this._onCheckpoint()) { this.blocked = true; return { ok: false, error: 'CHECKPOINT' }; }
+      // Find the card matching this invite (by profile handle) and click Accept.
+      const card = this.page
+        .locator('.invitation-card, li.mn-invitation-list__item')
+        .filter({ has: this.page.locator(`a[href*="/in/${invite.profileRef}"]`) })
+        .first();
+      const accept = (await card.count())
+        ? card.getByRole('button', { name: /Accept/i }).first()
+        : this.page.getByRole('button', { name: /Accept/i }).first();
+      if (!(await accept.count())) return { ok: false, error: 'Accept button not found' };
+      await accept.click();
+      await humanPause();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: String(err?.message || err) };
+    }
+  }
+
   async close() {
     try {
       if (this.context) await this.context.storageState({ path: this.config.playwright.sessionPath });

@@ -17,6 +17,7 @@
 
 import { STATUS } from '../db/leads.js';
 import { NullEmailClient } from '../email/EmailClient.js';
+import { breakerActive, tripBreaker } from './breaker.js';
 
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
@@ -91,22 +92,14 @@ export class Sequencer {
   // ---- circuit breaker ------------------------------------------------------
 
   _breakerActive(now) {
-    const last = this.db.lastEventTime('circuit_break');
-    if (!last) return false;
-    return now.getTime() - new Date(last).getTime() < this.cfg.safety.breakerCooldownHours * HOUR;
+    return breakerActive(this.db, this.cfg, now);
   }
 
   // If the driver is now blocked, trip the breaker: record it (once per cooldown),
   // alert, and mark the tick skipped. Returns true if blocked.
   async _tripIfBlocked(now, summary) {
     if (!this.client.isBlocked || !this.client.isBlocked()) return false;
-    if (!this._breakerActive(now)) {
-      this.db.logEvent(null, 'circuit_break', 'linkedin checkpoint/auth wall detected', now.toISOString());
-      await this.notifier.send(
-        '🛑 Circuit breaker tripped: LinkedIn showed a checkpoint / auth wall. ' +
-          'All sending is paused. Log in manually and investigate before resuming.'
-      );
-    }
+    await tripBreaker(this.db, this.notifier, this.cfg, now);
     summary.skipped = 'circuit-breaker tripped (LinkedIn checkpoint detected)';
     return true;
   }
