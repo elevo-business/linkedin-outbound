@@ -182,8 +182,11 @@ export class UnipileClient extends LinkedInClient {
 
   // ---- inbound surface -------------------------------------------------------
 
-  async publishPost(text) {
+  async publishPost(text, opts = {}) {
     try {
+      // NOTE: image attachment via Unipile needs the multipart `attachments` field
+      // confirmed for your account — left text-only here. Validate live, then wire.
+      if (opts.imagePath) this.log('[unipile] image attach not yet wired — publishing text only');
       const out = await this._req('POST', '/posts', { account_id: this.cfg.accountId, text });
       return { ok: true, ref: out?.id || out?.post_id || out?.share_id || null };
     } catch (err) {

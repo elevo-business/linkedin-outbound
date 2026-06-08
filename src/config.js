@@ -118,7 +118,28 @@ export function loadConfig(overrides = {}) {
     // Content generation models (Claude via the same Max-plan CLI). Quality-critical
     // assets default to a stronger model; everything still falls back to templates.
     content: {
+      // template -> offline placeholder (NOT for production posts).
+      // claude-cli -> Claude Max plan via the `claude` CLI (interactive login; not headless).
+      // claude-api -> Anthropic API (works headless in a container) — recommended for deploys.
+      engine: str(process.env.CONTENT_ENGINE, 'template'),
       model: str(process.env.CONTENT_MODEL, 'claude-opus-4-8'),
+      apiKey: str(process.env.ANTHROPIC_API_KEY, ''),
+      language: str(process.env.CONTENT_LANGUAGE, 'English'), // fallback; campaigns override
+    },
+
+    // Post image generation (Claude writes the brief; an image model renders it).
+    image: {
+      provider: str(process.env.IMAGE_PROVIDER, 'none'), // none | gemini | openai | mock
+      dir: path.resolve(ROOT, str(process.env.IMAGE_DIR, './data/images')),
+      gemini: {
+        apiKey: str(process.env.GEMINI_API_KEY, ''),
+        model: str(process.env.GEMINI_IMAGE_MODEL, 'imagen-4.0-generate-001'),
+      },
+      openai: {
+        apiKey: str(process.env.OPENAI_API_KEY, ''),
+        model: str(process.env.OPENAI_IMAGE_MODEL, 'gpt-image-1'),
+        size: str(process.env.OPENAI_IMAGE_SIZE, '1024x1024'),
+      },
     },
 
     server: {

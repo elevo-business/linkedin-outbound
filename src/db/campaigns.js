@@ -10,9 +10,9 @@ export class Campaigns {
   create(c, now = new Date().toISOString()) {
     const res = this.db.run(
       `INSERT INTO campaigns
-         (name, icp, topics, trigger_word, delivery, value_prop, sender_name, sender_role, status, created_at, updated_at)
+         (name, icp, topics, trigger_word, delivery, value_prop, sender_name, sender_role, language, status, created_at, updated_at)
        VALUES
-         ($name, $icp, $topics, $trigger, $delivery, $vp, $sn, $sr, $status, $now, $now)`,
+         ($name, $icp, $topics, $trigger, $delivery, $vp, $sn, $sr, $language, $status, $now, $now)`,
       {
         name: c.name,
         icp: c.icp ?? null,
@@ -22,6 +22,7 @@ export class Campaigns {
         vp: c.value_prop ?? null,
         sn: c.sender_name ?? null,
         sr: c.sender_role ?? null,
+        language: c.language ?? null,
         status: c.status ?? 'active',
         now,
       }

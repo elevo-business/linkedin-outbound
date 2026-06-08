@@ -92,6 +92,13 @@ export class Posts {
     this.db.run(`UPDATE posts SET body = $body, updated_at = $now WHERE id = $id`, { id, body, now });
   }
 
+  setImage(id, imagePath, imagePrompt, now = new Date().toISOString()) {
+    this.db.run(
+      `UPDATE posts SET image_path = $p, image_prompt = $prompt, updated_at = $now WHERE id = $id`,
+      { id, p: imagePath ?? null, prompt: imagePrompt ?? null, now }
+    );
+  }
+
   remove(id) {
     this.db.run(`DELETE FROM posts WHERE id = $id`, { id });
   }

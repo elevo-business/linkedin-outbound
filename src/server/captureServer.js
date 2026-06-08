@@ -13,6 +13,7 @@ import { Db } from '../db/db.js';
 import { Magnets } from '../db/magnets.js';
 import { Engagements, ENGAGEMENT_STATUS as ES } from '../db/engagements.js';
 import { createCrmClient, syncEngagementToCrm } from '../crm/index.js';
+import { magnetToPdf } from '../inbound/magnetPdf.js';
 
 const esc = (s) =>
   String(s ?? '')
@@ -60,6 +61,22 @@ export function createCaptureServer(config, deps = {}) {
 
       if (url.pathname === '/health') return send(200, 'text/plain', 'ok');
 
+      // PDF download of the lead magnet.
+      const pdfMatch = url.pathname.match(/^\/m\/([^/]+)\/pdf$/);
+      if (pdfMatch) {
+        const magnet = magnets.bySlug(decodeURIComponent(pdfMatch[1]));
+        if (!magnet) return send(404, 'text/plain', 'Not found');
+        const eid = Number(url.searchParams.get('e')) || null;
+        if (eid) db.logEvent(eid, 'magnet_download', magnet.slug);
+        const author = magnet.cta ? '' : '';
+        const pdf = magnetToPdf({ title: magnet.name, author, markdown: magnet.body || magnet.description || '' });
+        res.writeHead(200, {
+          'content-type': 'application/pdf',
+          'content-disposition': `inline; filename="${magnet.slug}.pdf"`,
+        });
+        return res.end(pdf);
+      }
+
       const m = url.pathname.match(/^\/m\/([^/]+)$/);
       if (!m) return send(404, 'text/plain', 'Not found');
       const slug = decodeURIComponent(m[1]);
@@ -70,12 +87,14 @@ export function createCaptureServer(config, deps = {}) {
         const eid = Number(url.searchParams.get('e')) || null;
         if (eid) db.logEvent(eid, 'magnet_click', slug);
         const gated = magnet.delivery === 'gated';
+        const pdfLink = `/m/${encodeURIComponent(slug)}/pdf${eid ? `?e=${eid}` : ''}`;
         const inner = gated
           ? `<h1>${esc(magnet.name)}</h1><p>${esc(magnet.description || '')}</p>` +
             `<form method="post"><input type="hidden" name="e" value="${eid || ''}">` +
             `<input type="email" name="email" placeholder="you@company.com" required> ` +
             `<button type="submit">Send it to me</button></form>`
-          : `<h1>${esc(magnet.name)}</h1><p>${esc(magnet.description || '')}</p><pre>${esc(magnet.body || '')}</pre>`;
+          : `<h1>${esc(magnet.name)}</h1><p>${esc(magnet.description || '')}</p>` +
+            `<p><a href="${pdfLink}"><button>⬇ Download PDF</button></a></p><pre>${esc(magnet.body || '')}</pre>`;
         return send(200, 'text/html', page(magnet.name, inner));
       }
 
@@ -97,7 +116,10 @@ export function createCaptureServer(config, deps = {}) {
             }
           }
         }
-        const inner = `<h1>You're in 🎉</h1><p>Here's <b>${esc(magnet.name)}</b>:</p><pre>${esc(magnet.body || '')}</pre>`;
+        const pdfLink = `/m/${encodeURIComponent(slug)}/pdf${eid ? `?e=${eid}` : ''}`;
+        const inner =
+          `<h1>You're in 🎉</h1><p>Here's <b>${esc(magnet.name)}</b>:</p>` +
+          `<p><a href="${pdfLink}"><button>⬇ Download PDF</button></a></p><pre>${esc(magnet.body || '')}</pre>`;
         return send(200, 'text/html', page('Thanks', inner));
       }
 

@@ -9,6 +9,7 @@
 
 import http from 'node:http';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import { Db } from '../db/db.js';
 import { Campaigns } from '../db/campaigns.js';
 import { Magnets } from '../db/magnets.js';
@@ -16,6 +17,7 @@ import { Posts, POST_STATUS } from '../db/posts.js';
 import { Engagements } from '../db/engagements.js';
 import { breakerActive } from '../core/breaker.js';
 import { ContentGenerator, POST_HOOKS } from '../inbound/contentGenerator.js';
+import { createImageClient, generatePostImage } from '../image/index.js';
 import { preflightChecks, summarize } from '../preflight.js';
 
 const DAY = 24 * 3600 * 1000;
@@ -88,6 +90,7 @@ export function createAdminServer(config, deps = {}) {
   const posts = new Posts(db);
   const engagements = new Engagements(db);
   const gen = deps.contentGenerator || new ContentGenerator(config, () => {});
+  const imagePromise = deps.image ? Promise.resolve(deps.image) : createImageClient(config, () => {});
   const runTick = deps.runTick || (async () => {
     const { buildInbound } = await import('../inboundRunner.js');
     const built = await buildInbound(config, () => {});
@@ -145,6 +148,7 @@ export function createAdminServer(config, deps = {}) {
             name: body.get('name') || 'Unbenannt', icp: body.get('icp'), topics: body.get('topics'),
             trigger_word: body.get('trigger') || config.inbound.triggerWord, delivery: body.get('delivery') || 'dm',
             value_prop: body.get('value_prop'), sender_name: body.get('sender_name'), sender_role: body.get('sender_role'),
+            language: body.get('language') || config.content.language,
           });
           return redirect('/campaigns?m=' + encodeURIComponent('Zielgruppe angelegt.'));
         }
@@ -192,11 +196,36 @@ export function createAdminServer(config, deps = {}) {
           posts.remove(Number(m[1]));
           return redirect('/review?m=' + encodeURIComponent('Verworfen.'));
         }
+        if ((m = url.pathname.match(/^\/posts\/(\d+)\/image$/))) {
+          const post = posts.byId(Number(m[1]));
+          const image = await imagePromise;
+          if (!post) return redirect('/review?m=not+found');
+          if (!image.enabled) return redirect('/review?m=' + encodeURIComponent('Kein Bild-Anbieter konfiguriert (IMAGE_PROVIDER).'));
+          const magnet = post.magnet_id ? magnets.byId(post.magnet_id) : null;
+          const campaign = post.campaign_id ? campaigns.byId(post.campaign_id) : null;
+          const r = await generatePostImage({ image, contentGenerator: gen, config, post, magnet, campaign });
+          if (r.ok) {
+            posts.setImage(post.id, r.path, r.brief);
+            return redirect('/review?m=' + encodeURIComponent('Bild generiert.'));
+          }
+          return redirect('/review?m=' + encodeURIComponent('Bild fehlgeschlagen: ' + (r.error || '')));
+        }
         if (url.pathname === '/tick') {
           const s = await runTick();
           return redirect('/?m=' + encodeURIComponent('Lauf ausgeführt: ' + JSON.stringify(s).slice(0, 140)));
         }
         return send(404, 'unknown action');
+      }
+
+      // ---------- image serving ----------
+      let im;
+      if ((im = url.pathname.match(/^\/image\/(\d+)$/))) {
+        const post = posts.byId(Number(im[1]));
+        if (post?.image_path && fs.existsSync(post.image_path)) {
+          res.writeHead(200, { 'content-type': 'image/png' });
+          return res.end(fs.readFileSync(post.image_path));
+        }
+        return send(404, 'text/plain', 'not found');
       }
 
       // ---------- pages ----------
@@ -251,11 +280,13 @@ export function createAdminServer(config, deps = {}) {
       `<div class="post"><div class="author"><div class="avatar">${esc(initials || '🙂')}</div>` +
       `<div><b>${esc(author)}</b><br><span class="muted" style="font-size:13px">${esc(campaign?.sender_role || config.personalizer.senderRole || '')}</span></div></div>` +
       `<div class="body">${nl2br(post.body)}</div>` +
+      (post.image_path ? `<img src="/image/${post.id}" alt="" style="max-width:100%;border-radius:8px;margin-top:12px">` : '') +
       (magnet ? `<div class="promo">📎 Bewirbt: <b>${esc(magnet.name)}</b> · Kommentar-Wort: <b>${esc(post.trigger_word || '')}</b> · Auslieferung: ${esc(magnet.delivery)}</div>` : '') +
       `</div>` +
       `<div class="actions">` +
       `<form class="inline" method="post" action="/posts/${post.id}/approve"><input type="hidden" name="_csrf" value="${csrf}"><button>✅ Freigeben & veröffentlichen</button></form>` +
-      `<form class="inline" method="post" action="/posts/${post.id}/regenerate"><input type="hidden" name="_csrf" value="${csrf}"><button class="ghost">🔄 Neu generieren</button></form>` +
+      `<form class="inline" method="post" action="/posts/${post.id}/regenerate"><input type="hidden" name="_csrf" value="${csrf}"><button class="ghost">🔄 Text neu</button></form>` +
+      (config.image.provider !== 'none' ? `<form class="inline" method="post" action="/posts/${post.id}/image"><input type="hidden" name="_csrf" value="${csrf}"><button class="ghost">🖼 ${post.image_path ? 'Bild neu' : 'Bild generieren'}</button></form>` : '') +
       `<form class="inline" method="post" action="/posts/${post.id}/discard"><input type="hidden" name="_csrf" value="${csrf}"><button class="danger">🗑 Verwerfen</button></form>` +
       `</div>` +
       `<details style="padding:0 16px 14px"><summary>✏️ Bearbeiten / später planen</summary>` +
@@ -295,7 +326,8 @@ export function createAdminServer(config, deps = {}) {
       `<label>Wen willst du erreichen? (ICP)</label><br><input name="icp" placeholder="z.B. B2B SaaS Gründer in DACH, 10–50 MA" style="width:100%"><br><br>` +
       `<label>Themen (Komma)</label><br><input name="topics" placeholder="z.B. outbound, deliverability, lead gen" style="width:100%"><br><br>` +
       `<div class="row"><div><label>Kommentar-Wort</label><br><input name="trigger" placeholder="z.B. GUIDE"></div>` +
-      `<div><label>Auslieferung</label><br><select name="delivery"><option value="dm">DM (Link im Chat)</option><option value="gated">Gated (E-Mail-Seite)</option></select></div></div><br>` +
+      `<div><label>Auslieferung</label><br><select name="delivery"><option value="dm">DM (Link im Chat)</option><option value="gated">Gated (E-Mail-Seite)</option></select></div>` +
+      `<div><label>Sprache</label><br><input name="language" placeholder="z.B. German" value="${esc(config.content.language)}"></div></div><br>` +
       `<label>Was machst du? (für die Tonalität)</label><br><input name="value_prop" placeholder="z.B. wir buchen Demos für SaaS-Teams" style="width:100%"><br><br>` +
       `<div class="row"><div><label>Dein Name</label><br><input name="sender_name" placeholder="Mert"></div>` +
       `<div><label>Deine Rolle</label><br><input name="sender_role" placeholder="Founder"></div></div><br>` +

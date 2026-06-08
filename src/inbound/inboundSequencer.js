@@ -74,7 +74,7 @@ export class InboundSequencer {
   async _publishDuePosts(now, summary) {
     const due = this.posts.due(now.toISOString(), this.cfg.inbound.maxPostsPerTick);
     for (const post of due) {
-      const res = await this.client.publishPost(post.body);
+      const res = await this.client.publishPost(post.body, { imagePath: post.image_path || null });
       if (res.ok) {
         this.posts.markPublished(post.id, res.ref, now.toISOString());
         this.db.logEvent(post.id, 'post_published', post.hook, now.toISOString());

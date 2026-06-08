@@ -37,8 +37,11 @@ export class LinkedInClient {
 
   // ---- inbound (content-driven) surface --------------------------------------
 
-  /** Publish a post. Returns { ok, ref?, error? } (ref = the post URN/URL). */
-  async publishPost(_text) {
+  /**
+   * Publish a post. `opts.imagePath` (optional) attaches a generated image.
+   * Returns { ok, ref?, error? } (ref = the post URN/URL).
+   */
+  async publishPost(_text, _opts) {
     throw new Error('not implemented');
   }
 

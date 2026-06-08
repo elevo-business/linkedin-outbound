@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
   value_prop   TEXT,
   sender_name  TEXT,
   sender_role  TEXT,
+  language     TEXT,          -- content language (e.g. German, English)
   status       TEXT NOT NULL DEFAULT 'active', -- active | paused
   created_at   TEXT NOT NULL,
   updated_at   TEXT NOT NULL
@@ -95,6 +96,8 @@ CREATE TABLE IF NOT EXISTS posts (
   body         TEXT NOT NULL,
   hook         TEXT,           -- the variant "hook" label (for the learning loop)
   trigger_word TEXT,           -- comment keyword that requests the magnet
+  image_path   TEXT,           -- generated image on disk, if any
+  image_prompt TEXT,           -- the brief used to render it
   external_ref TEXT,           -- LinkedIn post URN / URL once published
   scheduled_at TEXT,
   published_at TEXT,
@@ -162,7 +165,8 @@ export class Db {
     });
     this._ensureCols('engagements', { crm_ref: 'TEXT', crm_synced_at: 'TEXT' });
     this._ensureCols('magnets', { campaign_id: 'INTEGER' });
-    this._ensureCols('posts', { campaign_id: 'INTEGER' });
+    this._ensureCols('posts', { campaign_id: 'INTEGER', image_path: 'TEXT', image_prompt: 'TEXT' });
+    this._ensureCols('campaigns', { language: 'TEXT' });
   }
 
   _ensureCols(table, defs) {

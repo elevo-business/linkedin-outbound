@@ -73,9 +73,9 @@ export class MockClient extends LinkedInClient {
   }
 
   // ---- inbound surface ----
-  async publishPost(text) {
-    this.actions.push({ type: 'publish', text });
-    this.logger(`[mock] publish post: "${String(text).slice(0, 60)}…"`);
+  async publishPost(text, opts = {}) {
+    this.actions.push({ type: 'publish', text, imagePath: opts.imagePath || null });
+    this.logger(`[mock] publish post${opts.imagePath ? ' (+image)' : ''}: "${String(text).slice(0, 60)}…"`);
     if (this.failPublish) return { ok: false, error: 'mock: failPublish' };
     return { ok: true, ref: `urn:mock:post:${++this._postSeq}` };
   }

@@ -10,6 +10,7 @@ import { Campaigns } from '../src/db/campaigns.js';
 import { Posts, POST_STATUS } from '../src/db/posts.js';
 import { ContentGenerator, POST_HOOKS } from '../src/inbound/contentGenerator.js';
 import { pickHook } from '../src/inbound/learning.js';
+import { createImageClient, generatePostImage } from '../src/image/index.js';
 
 const DAY = 24 * 3600 * 1000;
 
@@ -18,6 +19,7 @@ async function main() {
   const schedule = args.includes('--schedule');
   const publishNow = args.includes('--now'); // schedule at current time -> due immediately
   const learn = args.includes('--learn'); // pick hooks by past performance (bandit)
+  const withImage = args.includes('--image'); // also generate a post image
   const positional = args.filter((a) => !a.startsWith('--'));
   const magnetId = Number(positional[0]);
   const count = Number(positional[1] || 3);
@@ -40,6 +42,7 @@ async function main() {
   }
   // Inherit the campaign (ICP/voice/trigger) from the magnet, if any.
   const campaign = magnet.campaign_id ? campaigns.byId(magnet.campaign_id) : null;
+  const image = withImage ? await createImageClient(config, console.log) : null;
 
   for (let i = 0; i < count; i++) {
     const hook = learn ? pickHook(db, POST_HOOKS) : POST_HOOKS[i % POST_HOOKS.length];
@@ -61,6 +64,16 @@ async function main() {
     });
     console.log(`\nPost #${id} [${hook}]${scheduledAt ? ` scheduled ${scheduledAt}` : ' (draft)'}`);
     console.log(post.body);
+
+    if (image?.enabled) {
+      const r = await generatePostImage({ image, contentGenerator: gen, config, post: posts.byId(id), magnet, campaign });
+      if (r.ok) {
+        posts.setImage(id, r.path, r.brief);
+        console.log(`  🖼  image: ${r.path}`);
+      } else if (!r.skipped) {
+        console.log(`  ⚠️  image failed: ${r.error}`);
+      }
+    }
   }
   console.log(`\nGenerated ${count} post(s) for magnet "${magnet.name}".`);
   db.close();

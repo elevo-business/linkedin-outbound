@@ -250,7 +250,7 @@ export class PlaywrightClient extends LinkedInClient {
   // NOTE: reading comments / pending invites by scraping is brittle. For the
   // inbound flow, the Unipile driver (real API) is strongly recommended.
 
-  async publishPost(text) {
+  async publishPost(text, opts = {}) {
     try {
       if (!this.page) await this._launch();
       await this.page.goto('https://www.linkedin.com/feed/', { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -264,6 +264,20 @@ export class PlaywrightClient extends LinkedInClient {
       if (!(await editor.count())) return { ok: false, error: 'post editor not found' };
       await this._typeHuman(editor, text);
       await humanPause();
+      // Attach a generated image, best-effort (selectors are brittle — validate live).
+      if (opts.imagePath) {
+        try {
+          const photo = this.page.getByRole('button', { name: /(add a )?(photo|media|image)/i }).first();
+          if (await photo.count()) { await photo.click(); await humanPause(); }
+          const fileInput = this.page.locator('input[type="file"]').first();
+          if (await fileInput.count()) {
+            await fileInput.setInputFiles(opts.imagePath);
+            await humanPause();
+            const done = this.page.getByRole('button', { name: /^(Done|Next|Weiter|Fertig)$/i }).first();
+            if (await done.count()) { await done.click(); await humanPause(); }
+          }
+        } catch (err) { this.log(`[playwright] image attach failed: ${err.message}`); }
+      }
       const post = this.page.getByRole('button', { name: /^Post$/i }).first();
       if (!(await post.count())) return { ok: false, error: 'Post button not found' };
       await post.click();

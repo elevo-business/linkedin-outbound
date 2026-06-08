@@ -60,6 +60,17 @@ selectors/API shapes must be validated live on the server.
 - [x] Docker + docker-compose (admin/capture/inbound share a SQLite volume);
       Coolify-ready. SQLite WAL for multi-process safety.
 
+## Phase 7 — Real content quality, language, images, magnet PDFs
+- [x] Anthropic API content engine (`CONTENT_ENGINE=claude-api`) so quality posts
+      run headless in a container; claude-cli + template still supported.
+- [x] Per-campaign LANGUAGE (no more hard-English); cleaned-up template fallback.
+- [x] Swappable image layer: Gemini (Imagen) + OpenAI + mock/none. Claude writes
+      the image brief; the image model renders. Per-post image in gen-posts
+      `--image` and the admin (generate/regenerate, preview, served at /image/:id).
+      publishPost carries the image (Playwright attaches; Unipile flagged).
+- [x] Lead-magnet PDFs: dependency-free A4 PDF writer; capture server serves
+      `/m/:slug/pdf`, landing/thanks pages link to it.
+
 ## Phase 5 — Dynamic campaigns (no single global ICP)
 - [x] `campaigns` table + repo; magnets/posts gain `campaign_id` (migration).
 - [x] ContentGenerator takes a per-campaign context (ICP/topics/trigger/voice);

@@ -38,8 +38,14 @@ test('content generator uses the campaign ICP/trigger (template mode)', async ()
   assert.match(magnet.description, /CFOs/);
   assert.match(magnet.cta, /CFO/);
   const post = await gen.post(magnet, 'contrarian', campaign);
-  assert.match(post.body, /Most CFOs get this backwards/);
+  assert.match(post.body, /CFO/); // the campaign trigger word flows into the CTA
   assert.equal(post.trigger_word, 'CFO');
+});
+
+test('content context carries the campaign language (fallback to env default)', () => {
+  const cfg = testConfig({ content: { language: 'English' } });
+  assert.equal(contentContext(cfg, { language: 'German' }).language, 'German');
+  assert.equal(contentContext(cfg, null).language, 'English');
 });
 
 test('sequencer scans each post with its OWN trigger word', async () => {
