@@ -6,8 +6,8 @@ import { buildInboundHarness, testConfig, makeClock } from './helpers.js';
 
 const PAST = '2026-06-01T09:00:00Z';
 
-function seedScheduledPost(h, { trigger = 'guide' } = {}) {
-  const magnetId = h.magnets.create({ name: 'The Guide', description: 'a guide', cta: `comment ${trigger}`, body: 'x' });
+function seedScheduledPost(h, { trigger = 'guide', delivery = 'dm' } = {}) {
+  const magnetId = h.magnets.create({ name: 'The Guide', description: 'a guide', cta: `comment ${trigger}`, body: 'x', delivery });
   const postId = h.posts.create({
     magnet_id: magnetId,
     status: POST_STATUS.SCHEDULED,
@@ -90,15 +90,13 @@ test('a reply to the magnet DM hands the conversation over', async () => {
   assert.equal(h.engagements.byId(eng.id).status, ES.REPLIED);
 });
 
-test('gated delivery mode marks dm_sent, not delivered', async () => {
+test('gated delivery (per magnet) marks dm_sent, not delivered', async () => {
   const clock = makeClock('2026-06-01T10:00:00Z');
-  const config = testConfig({ inbound: { deliveryMode: 'gated' } });
   const h = buildInboundHarness({
     clock,
-    config,
     clientOpts: { comments: () => [{ name: 'Jane', profileRef: 'jane-1', text: 'guide' }] },
   });
-  seedScheduledPost(h);
+  seedScheduledPost(h, { delivery: 'gated' });
   const s = await h.sequencer.tick();
   assert.equal(s.delivered.length, 1);
   assert.equal(h.engagements.byStatus(ES.DM_SENT).length, 1, 'gated mode waits for email capture');

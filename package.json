@@ -18,6 +18,7 @@
     "status": "node scripts/status.js",
     "preflight": "node scripts/preflight.js",
     "probe-unipile": "node scripts/probe-unipile.js",
+    "campaign": "node scripts/campaign.js",
     "gen-magnet": "node scripts/gen-magnet.js",
     "gen-posts": "node scripts/gen-posts.js",
     "inbound-tick": "node src/inboundRunner.js --once",

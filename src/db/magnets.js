@@ -17,9 +17,10 @@ export class Magnets {
     const base = magnet.slug ? slugify(magnet.slug) : slugify(magnet.name);
     const slug = this._uniqueSlug(base);
     const res = this.db.run(
-      `INSERT INTO magnets (slug, name, description, body, cta, delivery, url, created_at, updated_at)
-       VALUES ($slug, $name, $description, $body, $cta, $delivery, $url, $now, $now)`,
+      `INSERT INTO magnets (campaign_id, slug, name, description, body, cta, delivery, url, created_at, updated_at)
+       VALUES ($campaign_id, $slug, $name, $description, $body, $cta, $delivery, $url, $now, $now)`,
       {
+        campaign_id: magnet.campaign_id ?? null,
         slug,
         name: magnet.name,
         description: magnet.description ?? null,

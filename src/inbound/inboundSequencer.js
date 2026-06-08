@@ -91,9 +91,10 @@ export class InboundSequencer {
   async _scanComments(now, summary) {
     const cutoff = new Date(now.getTime() - this.cfg.inbound.scanIntervalHours * HOUR).toISOString();
     const toScan = this.posts.needingScan(cutoff, this.cfg.inbound.maxScansPerTick);
-    const trigger = new RegExp(this._escape(this.cfg.inbound.triggerWord), 'i');
 
     for (const post of toScan) {
+      // Each post carries its own (campaign) trigger word; fall back to the env default.
+      const trigger = new RegExp(this._escape(post.trigger_word || this.cfg.inbound.triggerWord), 'i');
       let comments = [];
       try {
         comments = await this.client.getPostComments(post);
@@ -171,7 +172,7 @@ export class InboundSequencer {
       }
       // dm mode: the magnet link is in the DM, so it's delivered. gated mode: the
       // email is captured on the landing page, so we only mark dm_sent here.
-      const delivered = this.cfg.inbound.deliveryMode === 'dm';
+      const delivered = this._delivery(magnet) === 'dm';
       this.engagements.setStatus(
         e.id,
         delivered ? ES.DELIVERED : ES.DM_SENT,
@@ -185,11 +186,17 @@ export class InboundSequencer {
     }
   }
 
+  // Delivery mode is a property of the magnet (set from its campaign); the env
+  // value is only a fallback.
+  _delivery(magnet) {
+    return magnet?.delivery || this.cfg.inbound.deliveryMode;
+  }
+
   _deliveryMessage(e, magnet) {
     const fn = firstName(e.name);
     const name = magnet?.name || 'the resource';
     const link = `${this.cfg.inbound.captureBaseUrl}/m/${magnet?.slug || 'resource'}?e=${e.id}`;
-    if (this.cfg.inbound.deliveryMode === 'gated') {
+    if (this._delivery(magnet) === 'gated') {
       return `Hey ${fn}, happy to send "${name}"! Grab it here (drop your email so I can send it over): ${link}`;
     }
     return `Hey ${fn}, here's "${name}" as promised: ${link} — hope it's useful. Happy to answer any questions.`;

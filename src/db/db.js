@@ -54,9 +54,27 @@ CREATE INDEX IF NOT EXISTS idx_events_type_time ON events(type, created_at);
 
 -- ---- Inbound (content-driven) engine ----------------------------------------
 
+-- Campaigns: a dynamic ICP/topic/voice bundle. Many can run in parallel; magnets
+-- and posts belong to one. Env INBOUND_* values are only fallback defaults.
+CREATE TABLE IF NOT EXISTS campaigns (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  name         TEXT NOT NULL,
+  icp          TEXT,
+  topics       TEXT,          -- comma-separated
+  trigger_word TEXT,
+  delivery     TEXT NOT NULL DEFAULT 'dm',  -- dm | gated
+  value_prop   TEXT,
+  sender_name  TEXT,
+  sender_role  TEXT,
+  status       TEXT NOT NULL DEFAULT 'active', -- active | paused
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+
 -- Lead magnets: the gated resource a post promises.
 CREATE TABLE IF NOT EXISTS magnets (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  campaign_id INTEGER,
   slug        TEXT UNIQUE NOT NULL,
   name        TEXT NOT NULL,
   description TEXT,
@@ -71,6 +89,7 @@ CREATE TABLE IF NOT EXISTS magnets (
 -- Posts: generated content that promotes a magnet and carries a trigger keyword.
 CREATE TABLE IF NOT EXISTS posts (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  campaign_id  INTEGER,
   magnet_id    INTEGER,
   status       TEXT NOT NULL DEFAULT 'draft', -- draft | scheduled | published | failed
   body         TEXT NOT NULL,
@@ -136,6 +155,8 @@ export class Db {
       email_enrolled_at: 'TEXT',
     });
     this._ensureCols('engagements', { crm_ref: 'TEXT', crm_synced_at: 'TEXT' });
+    this._ensureCols('magnets', { campaign_id: 'INTEGER' });
+    this._ensureCols('posts', { campaign_id: 'INTEGER' });
   }
 
   _ensureCols(table, defs) {

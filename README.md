@@ -27,11 +27,20 @@ ContentGenerator (Claude)                Capture server (gated page)
                                      auto-accept their invite     email → CRM (Pipedrive)
 ```
 
+**Campaigns make it dynamic.** ICP / topics / trigger word / voice / delivery live
+on a **campaign**, not a single global setting — run many in parallel. Magnets and
+posts inherit their campaign; the env `INBOUND_*` values are only fallback defaults.
+
 ```bash
-# 1) generate a magnet and some posts (Claude if PERSONALIZER=claude-cli)
-npm run gen-magnet -- "cold email deliverability"
-npm run gen-posts -- 1 4 --schedule         # 4 posts for magnet #1, spread over days
-npm run gen-posts -- 1 4 --schedule --learn # ...or let the bandit pick the hooks
+# 0) define a campaign (its ICP/voice drive the content)
+npm run campaign -- add --name "DACH SaaS" --icp "B2B SaaS founders in DACH" \
+     --topics "outbound,deliverability" --trigger guide --delivery dm
+npm run campaign -- list
+
+# 1) generate a magnet + posts FOR that campaign (Claude if PERSONALIZER=claude-cli)
+npm run gen-magnet -- "cold email deliverability" --campaign 1
+npm run gen-posts  -- 1 4 --schedule         # 4 posts for magnet #1, spread over days
+npm run gen-posts  -- 1 4 --schedule --learn # ...or let the bandit pick the hooks
 
 # 2) run the capture server (put it behind a public URL; set CAPTURE_BASE_URL)
 npm run capture-server

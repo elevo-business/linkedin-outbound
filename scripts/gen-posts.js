@@ -6,6 +6,7 @@
 import { loadConfig } from '../src/config.js';
 import { Db } from '../src/db/db.js';
 import { Magnets } from '../src/db/magnets.js';
+import { Campaigns } from '../src/db/campaigns.js';
 import { Posts, POST_STATUS } from '../src/db/posts.js';
 import { ContentGenerator, POST_HOOKS } from '../src/inbound/contentGenerator.js';
 import { pickHook } from '../src/inbound/learning.js';
@@ -28,6 +29,7 @@ async function main() {
   const config = loadConfig();
   const db = new Db(config.dbPath);
   const magnets = new Magnets(db);
+  const campaigns = new Campaigns(db);
   const posts = new Posts(db);
   const gen = new ContentGenerator(config, console.log);
 
@@ -36,10 +38,12 @@ async function main() {
     console.error(`No magnet #${magnetId}. Run gen-magnet.js first or check the id.`);
     process.exit(1);
   }
+  // Inherit the campaign (ICP/voice/trigger) from the magnet, if any.
+  const campaign = magnet.campaign_id ? campaigns.byId(magnet.campaign_id) : null;
 
   for (let i = 0; i < count; i++) {
     const hook = learn ? pickHook(db, POST_HOOKS) : POST_HOOKS[i % POST_HOOKS.length];
-    const post = await gen.post(magnet, hook);
+    const post = await gen.post(magnet, hook, campaign);
     const willSchedule = schedule || publishNow;
     const scheduledAt = publishNow
       ? new Date().toISOString()
@@ -47,6 +51,7 @@ async function main() {
         ? new Date(Date.now() + (i + 1) * DAY).toISOString()
         : null;
     const id = posts.create({
+      campaign_id: campaign?.id ?? null,
       magnet_id: magnetId,
       status: willSchedule ? POST_STATUS.SCHEDULED : POST_STATUS.DRAFT,
       body: post.body,

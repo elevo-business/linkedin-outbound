@@ -7,6 +7,7 @@ import { Db } from '../src/db/db.js';
 import { Leads } from '../src/db/leads.js';
 import { Posts } from '../src/db/posts.js';
 import { Engagements } from '../src/db/engagements.js';
+import { Campaigns } from '../src/db/campaigns.js';
 import { RateLimiter } from '../src/core/rateLimiter.js';
 import { hookStats } from '../src/inbound/learning.js';
 
@@ -59,6 +60,12 @@ const magnetCount = db.get(`SELECT COUNT(*) AS n FROM magnets`).n;
 const hasInbound = magnetCount || Object.keys(pc).length || Object.keys(ec).length;
 
 if (hasInbound) {
+  const camps = new Campaigns(db).all();
+  if (camps.length) {
+    console.log('\n=== Campaigns ===');
+    for (const c of camps) console.log(`  #${c.id} [${c.status}] ${c.name} — icp: ${c.icp || '—'} | trigger: ${c.trigger_word || '—'} | ${c.delivery}`);
+  }
+
   console.log('\n=== Inbound: posts ===');
   for (const s of ['draft', 'scheduled', 'published', 'failed']) console.log(`  ${s.padEnd(12)} ${pc[s] || 0}`);
 

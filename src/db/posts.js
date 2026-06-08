@@ -15,9 +15,10 @@ export class Posts {
 
   create(post, now = new Date().toISOString()) {
     const res = this.db.run(
-      `INSERT INTO posts (magnet_id, status, body, hook, trigger_word, scheduled_at, created_at, updated_at)
-       VALUES ($magnet_id, $status, $body, $hook, $trigger_word, $scheduled_at, $now, $now)`,
+      `INSERT INTO posts (campaign_id, magnet_id, status, body, hook, trigger_word, scheduled_at, created_at, updated_at)
+       VALUES ($campaign_id, $magnet_id, $status, $body, $hook, $trigger_word, $scheduled_at, $now, $now)`,
       {
+        campaign_id: post.campaign_id ?? null,
         magnet_id: post.magnet_id ?? null,
         status: post.status ?? POST_STATUS.DRAFT,
         body: post.body,

@@ -53,6 +53,15 @@ selectors/API shapes must be validated live on the server.
 - [x] README inbound section; scripts wired into package.json.
 - [x] End-to-end mock dry-run verified.
 
+## Phase 5 — Dynamic campaigns (no single global ICP)
+- [x] `campaigns` table + repo; magnets/posts gain `campaign_id` (migration).
+- [x] ContentGenerator takes a per-campaign context (ICP/topics/trigger/voice);
+      env INBOUND_* become fallback defaults only.
+- [x] Sequencer scans each post with ITS trigger word; delivery mode per magnet.
+- [x] `scripts/campaign.js` (add/list/pause/activate); gen-magnet `--campaign`,
+      gen-posts inherits the campaign from its magnet.
+- [x] status.js campaigns section; tests (58 green).
+
 ## Still manual / live-only (by design — you do these)
 - Pick the driver and fill keys (Playwright login+proxy, or Unipile DSN/key/account).
 - Validate live: post publishing, comment reading, invite accepting, and the
