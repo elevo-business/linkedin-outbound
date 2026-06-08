@@ -88,6 +88,14 @@ export class Posts {
     );
   }
 
+  updateBody(id, body, now = new Date().toISOString()) {
+    this.db.run(`UPDATE posts SET body = $body, updated_at = $now WHERE id = $id`, { id, body, now });
+  }
+
+  remove(id) {
+    this.db.run(`DELETE FROM posts WHERE id = $id`, { id });
+  }
+
   counts() {
     const rows = this.db.all(`SELECT status, COUNT(*) AS n FROM posts GROUP BY status`);
     const out = {};

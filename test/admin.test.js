@@ -49,7 +49,7 @@ test('admin: login, view dashboard, create a campaign, CSRF enforced', async () 
 
     const home = await get(port, '/', sid);
     assert.equal(home.status, 200);
-    assert.match(await home.text(), /Admin/);
+    assert.match(await home.text(), /LinkedIn Maschine/);
 
     // CSRF required.
     assert.equal((await post(port, '/campaigns/create', { name: 'X' }, sid)).status, 403, 'missing csrf rejected');
@@ -71,13 +71,40 @@ test('admin: login, view dashboard, create a campaign, CSRF enforced', async () 
   }
 });
 
-test('admin: preflight page renders for an authed user', async () => {
+test('admin: setup/preflight page renders for an authed user', async () => {
   const { server, port } = await startServer({ db: new Db(':memory:'), runTick: async () => ({}) });
   try {
     const sid = await login(port);
-    const html = await (await get(port, '/preflight', sid)).text();
-    assert.match(html, /preflight/i);
-    assert.match(html, /NOT READY|READY/);
+    const html = await (await get(port, '/setup', sid)).text();
+    assert.match(html, /bereit/i); // "Bereit" / "Noch nicht bereit"
+  } finally {
+    server.close();
+  }
+});
+
+test('admin: generate drafts then approve removes them from review', async () => {
+  const db = new Db(':memory:');
+  const { Campaigns } = await import('../src/db/campaigns.js');
+  const { Posts } = await import('../src/db/posts.js');
+  const cid = new Campaigns(db).create({ name: 'C', icp: 'founders', topics: 'outbound', trigger_word: 'GUIDE' });
+  const { server, port } = await startServer({ db, runTick: async () => ({}) });
+  try {
+    const sid = await login(port);
+    let csrf = await csrfFrom(port, '/campaigns', sid);
+    // generate 2 drafts for the campaign
+    await post(port, `/campaigns/${cid}/generate`, { count: '2', _csrf: csrf }, sid);
+    const drafts = new Posts(db).byStatus('draft');
+    assert.equal(drafts.length, 2, 'two drafts created and awaiting review');
+
+    // review page shows the previews
+    const review = await (await get(port, '/review', sid)).text();
+    assert.match(review, /Freigabe|warten auf deine Freigabe/);
+
+    // approve one -> it leaves the draft state (scheduled)
+    csrf = await csrfFrom(port, '/review', sid);
+    await post(port, `/posts/${drafts[0].id}/approve`, { _csrf: csrf }, sid);
+    assert.equal(new Posts(db).byStatus('draft').length, 1);
+    assert.equal(new Posts(db).byId(drafts[0].id).status, 'scheduled');
   } finally {
     server.close();
   }

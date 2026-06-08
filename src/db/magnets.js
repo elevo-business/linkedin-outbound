@@ -54,4 +54,8 @@ export class Magnets {
   all() {
     return this.db.all(`SELECT * FROM magnets ORDER BY id ASC`);
   }
+
+  byCampaign(campaignId) {
+    return this.db.get(`SELECT * FROM magnets WHERE campaign_id = $id ORDER BY id ASC`, { id: campaignId });
+  }
 }
