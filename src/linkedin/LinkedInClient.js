@@ -1,0 +1,34 @@
+// Abstract access layer. Every driver (mock, playwright, later unipile)
+// implements this same surface, so the sequencer never depends on a specific one.
+//
+// All methods return plain results; they should NOT throw for ordinary
+// "not yet"/"not found" cases — only for hard, unexpected failures.
+
+export class LinkedInClient {
+  /** Establish/restore a session. Returns { ok } */
+  async login() {
+    throw new Error('not implemented');
+  }
+
+  /** Send a connection request with a note. Returns { ok, error? } */
+  async sendConnectionRequest(_lead, _note) {
+    throw new Error('not implemented');
+  }
+
+  /** Has the invite been accepted? Returns boolean. */
+  async isConnected(_lead) {
+    throw new Error('not implemented');
+  }
+
+  /** Send a direct message. Returns { ok, error? } */
+  async sendMessage(_lead, _text) {
+    throw new Error('not implemented');
+  }
+
+  /** Did the lead reply since our last outbound message? Returns boolean. */
+  async hasReply(_lead) {
+    throw new Error('not implemented');
+  }
+
+  async close() {}
+}

@@ -1,0 +1,23 @@
+{
+  "name": "linkedin-outbound",
+  "version": "0.1.0",
+  "description": "Personal LinkedIn outbound machine: connect -> personalized DM -> follow-ups, with conservative rate limits and a swappable access layer (Playwright today, Unipile later).",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "bin": {
+    "lo-import": "scripts/import-leads.js",
+    "lo-run": "src/runner.js"
+  },
+  "scripts": {
+    "test": "node --test --experimental-sqlite",
+    "import": "node scripts/import-leads.js",
+    "tick": "node src/runner.js --once",
+    "run-loop": "node src/runner.js",
+    "status": "node scripts/status.js"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.48.0"
+  }
+}
