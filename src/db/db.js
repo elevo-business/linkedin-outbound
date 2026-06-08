@@ -105,6 +105,8 @@ CREATE TABLE IF NOT EXISTS engagements (
   replied_at       TEXT,
   exported_at      TEXT,
   last_checked_at  TEXT,
+  crm_ref          TEXT,
+  crm_synced_at    TEXT,
   error            TEXT,
   created_at       TEXT NOT NULL,
   updated_at       TEXT NOT NULL,
@@ -127,14 +129,20 @@ export class Db {
   // Idempotently add columns that newer versions introduced, so existing
   // databases keep working without a manual migration.
   _migrate() {
-    const cols = this.all(`PRAGMA table_info(leads)`).map((c) => c.name);
-    const add = (name, type) => {
-      if (!cols.includes(name)) this.sqlite.exec(`ALTER TABLE leads ADD COLUMN ${name} ${type}`);
-    };
-    add('withdrawn_at', 'TEXT');
-    add('last_checked_at', 'TEXT');
-    add('email', 'TEXT');
-    add('email_enrolled_at', 'TEXT');
+    this._ensureCols('leads', {
+      withdrawn_at: 'TEXT',
+      last_checked_at: 'TEXT',
+      email: 'TEXT',
+      email_enrolled_at: 'TEXT',
+    });
+    this._ensureCols('engagements', { crm_ref: 'TEXT', crm_synced_at: 'TEXT' });
+  }
+
+  _ensureCols(table, defs) {
+    const existing = this.all(`PRAGMA table_info(${table})`).map((c) => c.name);
+    for (const [name, type] of Object.entries(defs)) {
+      if (!existing.includes(name)) this.sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
+    }
   }
 
   close() {

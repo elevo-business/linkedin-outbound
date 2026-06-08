@@ -9,6 +9,7 @@ import { Magnets } from './db/magnets.js';
 import { Posts } from './db/posts.js';
 import { Engagements } from './db/engagements.js';
 import { createClient } from './linkedin/index.js';
+import { createCrmClient } from './crm/index.js';
 import { RateLimiter } from './core/rateLimiter.js';
 import { Notifier } from './notify/notifier.js';
 import { InboundSequencer } from './inbound/inboundSequencer.js';
@@ -22,10 +23,11 @@ export async function buildInbound(config, logger = console.log) {
   const posts = new Posts(db);
   const engagements = new Engagements(db);
   const client = await createClient(config, logger);
+  const crm = await createCrmClient(config, logger);
   const rateLimiter = new RateLimiter(db, config);
   const notifier = new Notifier(config, logger);
-  const sequencer = new InboundSequencer({ db, magnets, posts, engagements, client, rateLimiter, notifier, config, logger });
-  return { db, client, sequencer };
+  const sequencer = new InboundSequencer({ db, magnets, posts, engagements, client, crm, rateLimiter, notifier, config, logger });
+  return { db, client, crm, sequencer };
 }
 
 function describe(s) {

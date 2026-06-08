@@ -125,6 +125,17 @@ export function loadConfig(overrides = {}) {
       capturePort: num(process.env.CAPTURE_PORT, 3000),
     },
 
+    // CRM hand-off for captured / taken-over inbound leads.
+    crm: {
+      provider: str(process.env.CRM_PROVIDER, 'none'), // none | pipedrive | mock
+      createOn: str(process.env.CRM_CREATE_ON, 'both'), // capture | reply | both
+      pipedrive: {
+        baseUrl: str(process.env.PIPEDRIVE_BASE_URL, 'https://api.pipedrive.com/v1'),
+        apiToken: str(process.env.PIPEDRIVE_API_TOKEN, ''),
+        ownerId: str(process.env.PIPEDRIVE_OWNER_ID, ''),
+      },
+    },
+
     personalizer: {
       mode: str(process.env.PERSONALIZER, 'template'),
       claudeBin: str(process.env.CLAUDE_BIN, 'claude'),

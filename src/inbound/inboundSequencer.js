@@ -11,17 +11,20 @@
 
 import { ENGAGEMENT_STATUS as ES } from '../db/engagements.js';
 import { breakerActive, tripBreaker } from '../core/breaker.js';
+import { NullCrmClient } from '../crm/CrmClient.js';
+import { syncEngagementToCrm } from '../crm/index.js';
 
 const HOUR = 3600 * 1000;
 const firstName = (name) => (name ? name.trim().split(/\s+/)[0] : 'there');
 
 export class InboundSequencer {
-  constructor({ db, magnets, posts, engagements, client, rateLimiter, notifier, config, clock, logger }) {
+  constructor({ db, magnets, posts, engagements, client, rateLimiter, notifier, config, clock, logger, crm }) {
     this.db = db;
     this.magnets = magnets;
     this.posts = posts;
     this.engagements = engagements;
     this.client = client;
+    this.crm = crm || new NullCrmClient();
     this.rate = rateLimiter;
     this.notifier = notifier;
     this.cfg = config;
@@ -200,6 +203,9 @@ export class InboundSequencer {
       if (await this.client.hasReply({ linkedin_url: e.linkedin_url, name: e.name })) {
         this.engagements.setStatus(e.id, ES.REPLIED, { stampColumn: 'replied_at' }, now.toISOString());
         this.db.logEvent(e.id, 'inbound_reply', null, now.toISOString());
+        if (['reply', 'both'].includes(this.cfg.crm.createOn)) {
+          await syncEngagementToCrm(this.crm, this.engagements, this.db, e, now);
+        }
         await this.notifier.send(`💬 ${e.name || 'A lead'} replied to your magnet DM — take over the conversation.`);
         summary.replies.push(e.id);
       }

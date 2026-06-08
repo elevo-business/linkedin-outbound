@@ -129,6 +129,13 @@ export class Engagements {
     this.db.run(`UPDATE engagements SET exported_at = $now, updated_at = $now WHERE id = $id`, { id, now });
   }
 
+  markCrmSynced(id, ref, now = new Date().toISOString()) {
+    this.db.run(
+      `UPDATE engagements SET crm_ref = $ref, crm_synced_at = $now, updated_at = $now WHERE id = $id`,
+      { id, ref: ref ?? null, now }
+    );
+  }
+
   counts() {
     const rows = this.db.all(`SELECT status, COUNT(*) AS n FROM engagements GROUP BY status`);
     const out = {};
